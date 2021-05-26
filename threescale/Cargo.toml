@@ -1,7 +1,7 @@
 [package]
 name = "threescale"
 version = "0.1.0"
-authors = ["Rahul Anand <rahulanand16nov@gmail.com>"]
+authors = ["Rahul Anand <rahulanand16nov@gmail.com>", "Lahiru Udayanga <lahirudesilva.17@cse.mrt.ac.lk>"]
 edition = "2018"
 
 [dependencies]
