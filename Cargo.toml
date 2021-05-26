@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "threescale",
+    "singleton-service",
+    "cache-filter"
+]
