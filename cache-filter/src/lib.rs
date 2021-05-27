@@ -1,3 +1,3 @@
-mod filter;
+mod authorization;
 mod configuration;
-mod auth;
+mod filter;

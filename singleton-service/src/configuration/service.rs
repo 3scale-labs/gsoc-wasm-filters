@@ -4,23 +4,30 @@ use std::time::Duration;
 #[derive(Deserialize, Debug)]
 #[serde(default)]
 pub struct ServiceConfig {
-    /// Envoy cluster name that provides ext_authz service. Should provide the cluster
-    /// name of the ext_authz cluster in the envoy.yaml file.
+    /// Threescale cluster name that indicates threescale backend that includes SM API. Should provide the cluster
+    /// name of the threescale cluster in the envoy.yaml file.
     threescale_cluster: String,
 
-    /// The path to call on the HTTP service for cache
+    /// The basepath for the authorize endpoint. 
     threescale_auth_basepath: String,
 
-    /// Time duration for the cache update
+    /// Authroize call timeout.
     #[serde(with = "serde_humanize_rs")]
     threescale_auth_timeout: Duration,
 
+    /// Size of the local cache container.
     local_cache_container_size: i32,
     
+    /// Minimum tick period for the periodical cache update in case of low traffic.
+    #[serde(with = "serde_humanize_rs")]
     minimum_tick: Duration,
     
+    /// Maximum tick period for the periodical cache update in case of low traffic.
+    #[serde(with = "serde_humanize_rs")]
     maximum_tick: Duration,
 
+    /// Retry duration in case threescale backend gets offline.
+    #[serde(with = "serde_humanize_rs")]
     retry_duration: Duration
 
 }
@@ -38,4 +45,3 @@ impl Default for ServiceConfig {
         }
     }
 }
-
