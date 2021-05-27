@@ -26,6 +26,7 @@ pub struct UsageReport {
   max_value: u32,
 }
 
+// Threescale's Application representation for cache
 #[allow(dead_code)]
 pub struct Application<'a> {
   app_id: String,
