@@ -8,9 +8,6 @@ pub struct ServiceConfig {
     /// name of the threescale cluster in the envoy.yaml file.
     threescale_cluster: String,
 
-    /// The basepath for the authorize endpoint. 
-    threescale_auth_basepath: String,
-
     /// Authroize call timeout.
     #[serde(with = "serde_humanize_rs")]
     threescale_auth_timeout: Duration,
@@ -36,7 +33,6 @@ impl Default for ServiceConfig {
     fn default() -> Self {
         ServiceConfig {
             threescale_cluster: "threescale_SM_API".to_owned(),
-            threescale_auth_basepath: "authorize.xml".to_owned(),
             threescale_auth_timeout: Duration::from_secs(5),
             local_cache_container_size: 100,
             minimum_tick: Duration::from_secs(5),
