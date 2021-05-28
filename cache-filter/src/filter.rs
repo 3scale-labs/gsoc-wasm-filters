@@ -1,9 +1,21 @@
-pub use crate::configuration::filter::FilterConfig;
+use crate::{
+    configuration::filter::FilterConfig,
+    utils::{
+        get_request_data,
+        handle_cache_miss,
+        is_rate_limited,
+        report_to_singleton,
+    }
+};
+use threescale::utils::get_application_from_cache;
 use log::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
-    types::{ContextType, LogLevel},
+    types::{ContextType, LogLevel, Action},
 };
+
+const QUEUE_NAME: &str = "message_queue"; 
+const VM_ID: &str = "my_vm_id";
 
 #[no_mangle]
 pub fn _start() {
@@ -69,7 +81,49 @@ struct CacheFilter {
     config: FilterConfig,
 }
 
-impl HttpContext for CacheFilter {}
+impl HttpContext for CacheFilter {
+    fn on_http_request_headers(&mut self, context_id: usize) -> Action {
+        let current_time = self.get_current_time();
+        let queue_id = self.resolve_shared_queue(VM_ID, QUEUE_NAME);
+        let request_data = match get_request_data() {
+            Some(data) => data,
+            None => {
+                info!("ctxt {}: Releveant request data not recieved from previous filter", context_id);
+                // Send back local response for not providing relevant request data
+                self.send_http_response(404,vec![],None);
+                return Action::Pause;
+            }
+        };
+
+        let key = format!("{}_{}",request_data.app_id,request_data.service_id);
+        match get_application_from_cache(key.as_str()) {
+            Some((mut app,_)) =>
+            {
+                info!("ctxt {}: Cache Hit",context_id);
+                if is_rate_limited(&request_data, &mut app, &current_time)
+                {
+                    info!("ctxt {}: Request is rate-limited",context_id);
+                    // Add some identifier for rate-limit filter
+                } 
+                else 
+                {
+                    info!("ctxt {}: Request is allowed to pass",context_id);
+                    if report_to_singleton(queue_id,&request_data)
+                    {
+                        // Handle MQ failure here
+                    }
+                }
+                return Action::Continue;
+            },
+
+            None => {
+                info!("Cache Miss");
+                handle_cache_miss(&request_data);
+                return Action::Pause;
+            }
+        }
+    }
+}
 
 impl Context for CacheFilter {}
 
