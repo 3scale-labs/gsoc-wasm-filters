@@ -9,4 +9,3 @@ pub struct ThreescaleData<'b> {
     service_id: String,
     metrics: RefCell<HashMap<&'b str,u32>>,
 }
-  

@@ -22,8 +22,7 @@ pub struct PeriodWindow {
 #[allow(dead_code)]
 pub struct UsageReport {
   period_window: PeriodWindow,
-  current_value: u32,
-  max_value: u32,
+  left_hits: u32,
 }
 
 // Threescale's Application representation for cache
@@ -33,7 +32,6 @@ pub struct Application<'a> {
   service_id: String,
   timestamp: Duration,
   local_state: RefCell<HashMap<&'a str,UsageReport>>,
-  remote_state: RefCell<HashMap<&'a str,UsageReport>>,
   metric_hierarchy: RefCell<HashMap<&'a str,&'a str>>,
   unlimited_counter: RefCell<HashMap<&'a str,u32>>,
 }
