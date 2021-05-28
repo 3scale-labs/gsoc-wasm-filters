@@ -90,7 +90,7 @@ impl HttpContext for CacheFilter {
             None => {
                 info!("ctxt {}: Releveant request data not recieved from previous filter", context_id);
                 // Send back local response for not providing relevant request data
-                self.send_http_response(404,vec![],None);
+                self.send_http_response(401,vec![],None);
                 return Action::Pause;
             }
         };
