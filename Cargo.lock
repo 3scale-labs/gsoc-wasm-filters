@@ -155,6 +155,9 @@ dependencies = [
 [[package]]
 name = "threescale"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "unicode-xid"
