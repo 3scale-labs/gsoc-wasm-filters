@@ -1,4 +1,4 @@
-use crate::structs::Application;
+use crate::structs::{Application, ThreescaleData};
 
 // Returns Application from shared data with CAS integer
 pub fn get_application_from_cache(key: &str) -> Option<(Application,u32)> {
@@ -11,3 +11,8 @@ pub fn set_application_to_cache(key: &str, app: &Application) -> bool {
     // Add random sleep in-between as well
     true
 }
+
+// Perform metrics update based on threescale specific logic
+pub fn update_metrics(new_hits: &ThreescaleData, application: &mut Application) -> bool {
+    true
+} 
