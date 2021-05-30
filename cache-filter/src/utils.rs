@@ -1,7 +1,6 @@
-use threescale::structs::{ ThreescaleData, Application };
+use threescale::structs::ThreescaleData;
 use std::collections::HashMap;
 use std::cell::RefCell;
-use std::time::SystemTime;
 
 // Parse request data and return it back inside the struct
 pub fn get_request_data() -> Option<ThreescaleData> {
@@ -13,16 +12,7 @@ pub fn get_request_data() -> Option<ThreescaleData> {
     })
 }
 
-pub fn handle_cache_miss(request_data: &ThreescaleData) {
+pub fn handle_cache_miss(_request_data: &ThreescaleData) {
     // Send response to 3scale
     // NOTE: Need to create a callback mechanism so we can refer to the same call and take any actions
-}
-
-pub fn is_rate_limited(request_data: &ThreescaleData, app: &mut Application, current_time: &SystemTime) -> bool {
-    // NOTE: Handle period window expiration as well
-    false
-}
-
-pub fn report_to_singleton(qid: Option<u32>, request_data: &ThreescaleData) -> bool {
-    false
 }

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use serde::{Serialize,Deserialize};
 
 
-#[derive(Serialize,Deserialize)]
+#[derive(Serialize,Deserialize,Clone)]
 pub enum Period {
   Minute,
   Hour,
@@ -18,35 +18,39 @@ pub enum Period {
 #[allow(dead_code)]
 #[derive(Serialize,Deserialize)]
 pub struct PeriodWindow {
-  start: Duration,
-  end: Duration,
-  window_type: Period,
+  pub start: Duration,
+  pub end: Duration,
+  pub window_type: Period,
 }
 
 #[allow(dead_code)]
 #[derive(Serialize,Deserialize)]
 pub struct UsageReport {
-  period_window: PeriodWindow,
-  left_hits: u32,
+  pub period_window: PeriodWindow,
+  pub left_hits: u32,
   // Required to renew window untill new state is fetched from 3scale.
-  max_value: u32,
+  pub max_value: u32,
 }
 
 // Threescale's Application representation for cache
-#[allow(dead_code)]
 #[derive(Serialize,Deserialize)]
 pub struct Application {
-  app_id: String,
-  service_id: String,
-  timestamp: Duration,
-  local_state: RefCell<HashMap<String,UsageReport>>,
-  metric_hierarchy: RefCell<HashMap<String,String>>,
-  unlimited_counter: RefCell<HashMap<String,u32>>,
+  pub app_id: String,
+  pub service_id: String,
+  pub local_state: RefCell<HashMap<String,UsageReport>>,
+  pub metric_hierarchy: RefCell<HashMap<String,String>>,
+  pub unlimited_counter: RefCell<HashMap<String,u32>>,
 }
 
 // Request data recieved from previous filters
+#[derive(Serialize,Deserialize)]
 pub struct ThreescaleData {
   pub app_id: String,
   pub service_id: String,
   pub metrics: RefCell<HashMap<String,u32>>,
+}
+
+pub struct Message {
+  pub update_cache_from_singleton: bool,
+  pub data: ThreescaleData,
 }
