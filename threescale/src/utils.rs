@@ -36,13 +36,14 @@ pub fn set_application_to_cache(key: &str, app: &Application, overwrite: bool, n
         cas = get_cas_from_cache(key);
     }
 
-    for num_try in 1..num_tries.unwrap_or(2){
+    for num_try in 1..(1+num_tries.unwrap_or(1)) {
         info!("Try {}: Setting application with key: {}", num_try, key);
         match set_shared_data(&key,Some(&bincode::serialize::<Application>(&app).unwrap()), cas)
         {
             Ok(()) => return false,
             Err(e) => info!("Try {}: Set operation failed for key: {} due to: {:?}", num_try, key, e),
         }
+        cas = get_cas_from_cache(key);
     }
     true
 }
