@@ -9,8 +9,8 @@ use proxy_wasm::{
 };
 use std::time::SystemTime;
 use threescale::{
+    proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::{Application, Message, ThreescaleData},
-    utils::{get_application_from_cache, set_application_to_cache},
 };
 
 const QUEUE_NAME: &str = "message_queue";
