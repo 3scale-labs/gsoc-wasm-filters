@@ -43,14 +43,24 @@ pub struct Application {
 }
 
 // Request data recieved from previous filters
-#[derive(Serialize,Deserialize)]
+#[derive(Serialize,Deserialize,Clone)]
 pub struct ThreescaleData {
   pub app_id: String,
   pub service_id: String,
   pub metrics: RefCell<HashMap<String,u32>>,
 }
 
+#[derive(Serialize)]
 pub struct Message {
   pub update_cache_from_singleton: bool,
   pub data: ThreescaleData,
+}
+
+impl Message {
+  pub fn new(update_flag: bool, request_data: &ThreescaleData) -> Message {
+    Message {
+      update_cache_from_singleton: update_flag,
+      data: request_data.clone(),
+    }
+  }
 }

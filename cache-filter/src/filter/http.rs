@@ -11,7 +11,7 @@ use proxy_wasm::{
 };
 use threescale::{
     utils::{ get_application_from_cache, set_application_to_cache },
-    structs::{ ThreescaleData, Application },
+    structs::{ ThreescaleData, Application, Message },
 };
 use log::info;
 use std::time::SystemTime;
@@ -24,7 +24,7 @@ const VM_ID: &str = "my_vm_id";
 pub struct CacheFilter {
     pub context_id: u32,
     pub config: FilterConfig,
-    pub to_report_singleton: bool,
+    pub update_cache_from_singleton: bool,
     pub cache_key: String,
 }
 
@@ -54,7 +54,7 @@ impl HttpContext for CacheFilter {
                     info!("ctxt {}: Request is rate-limited", context_id);
                     // Add some identifier for rate-limit filter
                 } 
-                else if self.to_report_singleton 
+                else  
                 {
                     info!("ctxt {}: Request is allowed to pass", context_id);
                     if self.report_to_singleton(queue_id,&request_data) {
@@ -79,10 +79,11 @@ impl Context for CacheFilter {}
 
 impl CacheFilter {
     fn report_to_singleton(&self, queue_id: Option<u32>, request_data: &ThreescaleData) -> bool {
+        let message: Message = Message::new(self.update_cache_from_singleton, request_data);
         match queue_id {
             Some(qid) =>
             {
-                if let Err(_) =  self.enqueue_shared_queue(qid, Some(&bincode::serialize(request_data).unwrap())) {
+                if let Err(_) =  self.enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap())) {
                     info!("ctxt {}: Reporting to singleton failed: MQ with specified id not found", self.context_id);
                     return true;
                 }
@@ -118,7 +119,7 @@ impl CacheFilter {
         }
 
         if !set_application_to_cache(self.cache_key.as_str(), app, true, None) {
-            self.to_report_singleton = true;
+            self.update_cache_from_singleton = true;
         }
         false
     }
