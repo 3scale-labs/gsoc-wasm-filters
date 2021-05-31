@@ -28,7 +28,7 @@ fn get_cas_from_cache(key: &str) -> Option<u32> {
     }
 }
 
-// Returns true on set failure
+// Returns false on set failure
 pub fn set_application_to_cache(key: &str, app: &Application, overwrite: bool, num_tries: Option<u32>) -> bool {
     let mut cas = Some(0);
     
@@ -40,12 +40,12 @@ pub fn set_application_to_cache(key: &str, app: &Application, overwrite: bool, n
         info!("Try {}: Setting application with key: {}", num_try, key);
         match set_shared_data(&key,Some(&bincode::serialize::<Application>(&app).unwrap()), cas)
         {
-            Ok(()) => return false,
+            Ok(()) => return true,
             Err(e) => info!("Try {}: Set operation failed for key: {} due to: {:?}", num_try, key, e),
         }
         cas = get_cas_from_cache(key);
     }
-    true
+    false
 }
 
 pub fn get_next_period_window(old_window: &PeriodWindow, current_time: &SystemTime) -> PeriodWindow {

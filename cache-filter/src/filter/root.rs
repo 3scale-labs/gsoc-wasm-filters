@@ -56,7 +56,7 @@ impl RootContext for CacheFilterRoot {
         Some(Box::new(CacheFilter {
             context_id: context,
             config: self.config.clone(),
-            to_report_singleton: true,
+            to_report_singleton: false,
             cache_key: String::new(),
         }))
     }
