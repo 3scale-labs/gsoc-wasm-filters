@@ -49,7 +49,7 @@ pub struct ThreescaleData {
     pub metrics: RefCell<HashMap<String, u32>>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Message {
     pub update_cache_from_singleton: bool,
     pub data: ThreescaleData,

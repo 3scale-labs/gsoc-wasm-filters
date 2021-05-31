@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
-    structs::ThreescaleData,
+    structs::{Message, ThreescaleData},
     utils::update_metrics,
 };
 
@@ -62,8 +62,9 @@ impl RootContext for SingletonService {
         let configuration: Vec<u8> = match self.get_configuration() {
             Some(c) => c,
             None => {
-                warn!("Configuration missing. Please check the envoy.yaml file for filter configuration");
-                return false;
+                warn!("Configuration missing. Please check the envoy.yaml file for filter configuration.
+                Using default configuration.");
+                return true;
             }
         };
 
@@ -97,10 +98,14 @@ impl RootContext for SingletonService {
                     queue_entry
                 );
                 match queue_entry {
-                    Some(threescale) => {
+                    Some(message) => {
                         // TODO: Hanlde deserialization safely.
-                        let threescale: ThreescaleData = bincode::deserialize(&threescale).unwrap();
-                        // TODO: If update required, then update, Handle update failure
+                        let message_received: Message = bincode::deserialize(&message).unwrap();
+                        // TODO: Handle update failure
+                        let threescale: ThreescaleData = message_received.data;
+                        if message_received.update_cache_from_singleton {
+                            self.update_application_cache(&threescale);
+                        }
                         self.delta_store.update_delta_store(&threescale);
                     }
                     None => {

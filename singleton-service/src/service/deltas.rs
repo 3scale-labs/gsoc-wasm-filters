@@ -19,6 +19,7 @@ impl DeltaStore {
     }
 
     /// Method to flush delta store to 3scale SM API.
+    #[allow(dead_code)]
     pub fn flush_deltas(&self) -> bool {
         true
     }

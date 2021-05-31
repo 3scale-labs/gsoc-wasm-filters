@@ -14,6 +14,6 @@ pub fn get_next_period_window(
 }
 
 // Perform metrics update based on threescale specific logic
-pub fn update_metrics(new_hits: &ThreescaleData, application: &mut Application) -> bool {
+pub fn update_metrics(_new_hits: &ThreescaleData, _application: &mut Application) -> bool {
     true
 }
