@@ -14,19 +14,18 @@ pub struct ServiceConfig {
 
     /// Size of the local cache container.
     local_cache_container_size: i32,
-    
+
     /// Minimum tick period for the periodical cache update in case of low traffic.
     #[serde(with = "serde_humanize_rs")]
     minimum_tick: Duration,
-    
+
     /// Maximum tick period for the periodical cache update in case of low traffic.
     #[serde(with = "serde_humanize_rs")]
     maximum_tick: Duration,
 
     /// Retry duration in case threescale backend gets offline.
     #[serde(with = "serde_humanize_rs")]
-    retry_duration: Duration
-
+    retry_duration: Duration,
 }
 
 impl Default for ServiceConfig {
@@ -37,7 +36,7 @@ impl Default for ServiceConfig {
             local_cache_container_size: 100,
             minimum_tick: Duration::from_secs(5),
             maximum_tick: Duration::from_secs(60),
-            retry_duration: Duration::from_secs(20)
+            retry_duration: Duration::from_secs(20),
         }
     }
 }

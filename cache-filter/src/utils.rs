@@ -1,6 +1,6 @@
-use threescale::structs::ThreescaleData;
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use threescale::structs::ThreescaleData;
 
 // Parse request data and return it back inside the struct
 pub fn get_request_data() -> Option<ThreescaleData> {

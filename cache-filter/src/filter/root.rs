@@ -2,8 +2,8 @@ use crate::configuration::FilterConfig;
 use crate::filter::http::CacheFilter;
 use log::{debug, info, warn};
 use proxy_wasm::{
-    traits::{ HttpContext, RootContext, Context },
-    types::{ ContextType, LogLevel },
+    traits::{Context, HttpContext, RootContext},
+    types::{ContextType, LogLevel},
 };
 
 #[no_mangle]
