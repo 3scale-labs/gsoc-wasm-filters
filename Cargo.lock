@@ -25,6 +25,7 @@ dependencies = [
 name = "cache-filter"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "log",
  "proxy-wasm",
  "serde",
@@ -211,6 +212,9 @@ dependencies = [
 name = "threescale"
 version = "0.1.0"
 dependencies = [
+ "bincode",
+ "log",
+ "proxy-wasm",
  "serde",
 ]
 
