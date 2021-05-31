@@ -3,6 +3,12 @@ name = "threescale"
 version = "0.1.0"
 authors = ["Rahul Anand <rahulanand16nov@gmail.com>", "Lahiru Udayanga <lahirudesilva.17@cse.mrt.ac.lk>"]
 edition = "2018"
+description = "This package contains all the threescale related logic and common proxy-wasm functionalities"
+license = "Apache-2.0"
+repository = "https://github.com/3scale-labs/gsoc-wasm-filters"
+readme = "../README.md"
+keywords = ["threescale", "common"]
+categories = ["helper methods", "threescale business logic"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
