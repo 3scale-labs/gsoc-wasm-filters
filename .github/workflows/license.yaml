@@ -18,7 +18,6 @@ jobs:
       matrix:
         checks:
           - advisories
-          - bans licenses sources
     # Prevent sudden announcement of a new advisory from failing
     continue-on-error: ${{ matrix.checks == 'advisories' }}
 
