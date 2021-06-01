@@ -144,7 +144,7 @@ impl SingletonService {
                     // TODO: Handle when update_metrics fail
                 }
             }
-            //TODO: Handle when no app in cache
+            // TODO: Handle when no app in cache
             None => {
                 info!("No app in shared data");
                 false
