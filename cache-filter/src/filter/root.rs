@@ -43,11 +43,11 @@ impl RootContext for CacheFilterRoot {
             Ok(config) => {
                 debug!("configuring {}: {:?}", self.context_id, config);
                 self.config = config;
-                return true;
+                true
             }
             Err(e) => {
                 warn!("Failed to parse envoy.yaml configuration: {:?}", e);
-                return false;
+                false
             }
         }
     }

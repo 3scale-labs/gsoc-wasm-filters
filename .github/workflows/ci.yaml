@@ -1,0 +1,50 @@
+name: CI
+on:
+  push:
+    branches:
+      - 'dev/'
+      - '!main'
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - beta
+            # MSRV
+          - 1.52.1
+        experimental: [false]
+        cargo_flags: [--all-features]
+        include:
+          # Stop breakages in nightly to fail the workflow
+          - rust: nightly
+            experimental: true
+            cargo_flags: --all-features
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt
+          target: wasm32-unknown-unknown
+          override: true
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target=wasm32-unknown-unknown

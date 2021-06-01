@@ -54,13 +54,13 @@ impl HttpContext for CacheFilter {
                         // Handle MQ failure here
                     }
                 }
-                return Action::Continue;
+                Action::Continue
             }
 
             None => {
                 info!("ctxt {}: Cache Miss", context_id);
                 handle_cache_miss(&request_data);
-                return Action::Pause;
+                Action::Pause
             }
         }
     }
@@ -73,8 +73,9 @@ impl CacheFilter {
         let message: Message = Message::new(self.update_cache_from_singleton, request_data);
         match queue_id {
             Some(qid) => {
-                if let Err(_) =
-                    self.enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap()))
+                if self
+                    .enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap()))
+                    .is_err()
                 {
                     info!(
                         "ctxt {}: Reporting to singleton failed: MQ with specified id not found",
@@ -115,8 +116,8 @@ impl CacheFilter {
             }*/
 
             // If any metric is rate-limited then whole request is restricted
-            if app.local_state.borrow().get(metric).unwrap().left_hits - hits < 0 {
-                true;
+            if ((app.local_state.borrow().get(metric).unwrap().left_hits - hits) as i32) < 0 {
+                return true;
             }
         }
 

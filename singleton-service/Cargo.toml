@@ -3,6 +3,12 @@ name = "singleton-service"
 version = "0.1.0"
 authors = ["Rahul Anand <rahulanand16nov@gmail.com>", "Lahiru Udayanga <lahirudesilva.17@cse.mrt.ac.lk>"]
 edition = "2018"
+description = "This package contains all the singleton service related functionalities"
+license = "Apache-2.0"
+repository = "https://github.com/3scale-labs/gsoc-wasm-filters"
+readme = "../README.md"
+keywords = ["singleton", "wasm", "threescale"]
+categories = ["single service"]
 
 [lib]
 crate-type = ["cdylib"]

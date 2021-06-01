@@ -3,6 +3,12 @@ name = "cache-filter"
 version = "0.1.0"
 authors = ["Rahul Anand <rahulanand16nov@gmail.com>", "Lahiru Udayanga <lahirudesilva.17@cse.mrt.ac.lk>"]
 edition = "2018"
+description = "This package contains all the cache filter related functionalities"
+license = "Apache-2.0"
+repository = "https://github.com/3scale-labs/gsoc-wasm-filters"
+readme = "../README.md"
+keywords = ["cache", "wasm", "threescale"]
+categories = ["cache filter"]
 
 [lib]
 crate-type = ["cdylib"]
