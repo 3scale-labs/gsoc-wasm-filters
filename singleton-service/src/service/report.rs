@@ -36,13 +36,13 @@ impl<'a> Report<'a> {
 /// which is of threescalers Report request type. 
 pub fn report<'a>() -> Result<Report<'a>, anyhow::Error> {
     let metrics = [("hits", "1"),
-    ("hits.79419","1")].iter().cloned().collect();
-    let mut usages: HashMap<String, Vec<(&'a str, &'a str)>> = HashMap::new();
-    usages.insert("46de54605a1321aa3838480c5fa91bcc".to_string(), metrics);
+    ("hits.79419","1")].to_vec();
+    let mut usages_map: HashMap<String, Vec<(&'a str, &'a str)>> = HashMap::new();
+    usages_map.insert("46de54605a1321aa3838480c5fa91bcc".to_string(), metrics);
     Ok(Report{
         service_id: "2555417902188".to_string(),
         service_token: "6705c7d02e9a899d4db405dc1413361611e4250dfd12ec3dcbcea8c3de7cdd29".to_string(),
-        usages: usages
+        usages: usages_map
     })
 }
 
