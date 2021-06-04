@@ -1,5 +1,6 @@
 pub use crate::configuration::service::ServiceConfig;
 pub use crate::service::deltas::DeltaStore;
+use crate::service::report::*;
 use log::{debug, info, warn};
 use proxy_wasm::{
     hostcalls::{dequeue_shared_queue, register_shared_queue},
@@ -8,6 +9,8 @@ use proxy_wasm::{
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::time::Duration;
+use threescale::upstream::*;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::{Message, ThreescaleData},
@@ -19,7 +22,7 @@ const QUEUE_NAME: &str = "message_queue";
 
 #[no_mangle]
 pub fn _start() {
-    proxy_wasm::set_log_level(LogLevel::Trace);
+    proxy_wasm::set_log_level(LogLevel::Info);
     proxy_wasm::set_root_context(|context_id| -> Box<dyn RootContext> {
         Box::new(SingletonService {
             context_id,
@@ -59,10 +62,11 @@ impl RootContext for SingletonService {
     /// passed configuration, default configuration will be used.
     fn on_configure(&mut self, _config_size: usize) -> bool {
         // Check for the configuration passed by envoy.yaml
+        self.set_tick_period(Duration::from_secs(5));
         let configuration: Vec<u8> = match self.get_configuration() {
             Some(c) => c,
             None => {
-                warn!("Configuration missing. Please check the envoy.yaml file for filter configuration.
+                info!("Configuration missing. Please check the envoy.yaml file for filter configuration.
                 Using default configuration.");
                 return true;
             }
@@ -121,7 +125,42 @@ impl RootContext for SingletonService {
     /// Delta store flush is required in case of a low traffic where it takes a long time to fill the delta store
     /// container.
     fn on_tick(&mut self) {
-        self.is_flush_required();
+        // This is just a demo of a single Report Call to test the Report call untill bulk requests are implemented.
+        info!("onTick triggerd");
+        let report: Report = report().unwrap();
+        let request = build_report_request(&report).unwrap();
+        let (uri, body) = request.uri_and_body();
+        info!("request: {:?}", request);
+        let headers = request
+            .headers
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect::<Vec<_>>();
+        let upstream = Upstream {
+            name: "3scale-SM-API".to_string(),
+            url: "https://su1.3scale.net".parse().unwrap(),
+            timeout: Duration::from_millis(5000),
+        };
+        let call_token = match upstream.call(
+            self,
+            uri.as_ref(),
+            request.method.as_str(),
+            headers,
+            body.map(str::as_bytes),
+            None,
+            None,
+        ) {
+            Ok(call_token) => call_token,
+            Err(e) => {
+                info!("Error: {:?}", e);
+                // TODO : Handle error properly with a suitable retry mechanism.
+                panic!("Error: {:?}", e)
+            }
+        };
+        info!(
+            "threescale_cache_singleton: on_http_request_headers: call token is {}",
+            call_token
+        );
     }
 }
 
@@ -154,6 +193,7 @@ impl SingletonService {
 
     /// is_flush_required gets executed when on_tick() gets triggered. It will initiate delta store flush
     /// if it is required.
+    #[allow(dead_code)]
     fn is_flush_required(&self) -> bool {
         true
     }
