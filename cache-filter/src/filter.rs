@@ -1,2 +1,2 @@
-mod http;
+pub mod http;
 mod root;
