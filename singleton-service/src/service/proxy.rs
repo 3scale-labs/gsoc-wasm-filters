@@ -1,7 +1,6 @@
 pub use crate::configuration::service::ServiceConfig;
 pub use crate::service::deltas::DeltaStore;
 use crate::service::report::*;
-use threescale::upstream::*;
 use log::{debug, info, warn};
 use proxy_wasm::{
     hostcalls::{dequeue_shared_queue, register_shared_queue},
@@ -11,6 +10,7 @@ use proxy_wasm::{
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
+use threescale::upstream::*;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::{Message, ThreescaleData},
