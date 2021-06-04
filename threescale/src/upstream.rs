@@ -127,39 +127,6 @@ impl Upstream {
             timeout_ms.map_or(self.timeout, Duration::from_millis),
         )
     }
-
-    #[allow(dead_code, clippy::too_many_arguments)]
-    pub fn call_url<C: proxy_wasm::traits::Context>(
-        &self,
-        ctx: &C,
-        url: &Url,
-        method: &str,
-        headers: Vec<(&str, &str)>,
-        body: Option<&[u8]>,
-        trailers: Option<Vec<(&str, &str)>>,
-        timeout_ms: Option<u64>,
-    ) -> Result<u32, anyhow::Error> {
-        let mut path: std::borrow::Cow<str> = url.path().into();
-
-        if let Some(qs) = url.query() {
-            let path_mut = path.to_mut();
-            path_mut.push('?');
-            path_mut.push_str(qs);
-        }
-
-        Self::do_call(
-            ctx,
-            self.name(),
-            url.scheme(),
-            url.authority(),
-            path.as_ref(),
-            method,
-            headers,
-            body,
-            trailers,
-            Duration::from_millis(timeout_ms.unwrap_or(0)),
-        )
-    }
 }
 
 pub struct Builder {
