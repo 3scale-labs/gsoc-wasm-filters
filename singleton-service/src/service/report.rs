@@ -4,7 +4,7 @@ use threescalers::{
     api_call::{ApiCall, Kind},
     application::*,
     credentials::*,
-    extensions::{self, Extension},
+    extensions::{self},
     http::Request,
     service::*,
     transaction::Transaction,
@@ -18,12 +18,12 @@ pub struct Report<'a> {
 }
 
 impl<'a> Report<'a> {
-    pub fn service_id(&self) -> &String {
-        &self.service_id
+    pub fn service_id(&self) -> &str {
+        self.service_id.as_str()
     }
 
-    pub fn service_token(&self) -> &String {
-        &self.service_token
+    pub fn service_token(&self) -> &str {
+        self.service_token.as_str()
     }
 
     pub fn usages(&self) -> &HashMap<String, Vec<(&'a str, &'a str)>> {
@@ -48,8 +48,8 @@ pub fn report<'a>() -> Result<Report<'a>, anyhow::Error> {
 
 // build_report_request creates a request which is of type threescalers Report.
 pub fn build_report_request(report: &Report) -> Result<Request, anyhow::Error> {
-    let creds = Credentials::ServiceToken(ServiceToken::from(report.service_token().as_str()));
-    let svc = Service::new(report.service_id().as_str(), creds);
+    let creds = Credentials::ServiceToken(ServiceToken::from(report.service_token()));
+    let svc = Service::new(report.service_id(), creds);
     let mut app_usage = vec![];
     for (user_key, usage) in report.usages().iter() {
         let application = Application::from(UserKey::from(user_key.as_str()));
@@ -60,7 +60,7 @@ pub fn build_report_request(report: &Report) -> Result<Request, anyhow::Error> {
         .iter()
         .map(|au| (Transaction::new(&au.0, None, Some(&au.1), None)))
         .collect::<Vec<_>>();
-    let extensions = extensions::List::new().no_body().push(Extension::Hierarchy);
+    let extensions = extensions::List::new();
     let mut api_call = ApiCall::builder(&svc);
     let api_call = api_call
         .transactions(&txns)
