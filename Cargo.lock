@@ -244,18 +244,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-xml-rs"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0bf1ba0696ccf0872866277143ff1fd14d22eec235d2b23702f95e6660f7dfa"
-dependencies = [
- "log",
- "serde",
- "thiserror",
- "xml-rs",
-]
-
-[[package]]
 name = "serde_derive"
 version = "1.0.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -343,7 +331,7 @@ dependencies = [
  "bincode",
  "log 0.4.14",
  "proxy-wasm",
- "serde",
+ "serde 1.0.126",
  "url",
 ]
 
@@ -357,7 +345,7 @@ dependencies = [
  "chrono",
  "no-std-compat",
  "percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde",
+ "serde 1.0.126",
  "serde-xml-rs",
 ]
 
@@ -420,7 +408,7 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding 2.1.0 (git+https://github.com/3scale-rs/rust-url?branch=3scale)",
- "serde",
+ "serde 1.0.126",
 ]
 
 [[package]]

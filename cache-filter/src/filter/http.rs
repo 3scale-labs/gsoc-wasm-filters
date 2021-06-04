@@ -1,19 +1,19 @@
 use crate::{
     configuration::FilterConfig,
-    utils::{get_request_data,request_process_failure,do_auth_call}
+    utils::{do_auth_call, get_request_data, request_process_failure},
 };
-use log::{info,debug};
+use log::{debug, info};
 use proxy_wasm::{
     traits::{Context, HttpContext},
     types::Action,
 };
 use std::cell::RefCell;
-use std::time::{Duration,UNIX_EPOCH};
+use std::str::FromStr;
+use std::time::{Duration, UNIX_EPOCH};
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::{Application, Message, ThreescaleData},
 };
-use std::str::FromStr;
 use threescalers::response::Authorization;
 
 const QUEUE_NAME: &str = "message_queue";
@@ -59,7 +59,7 @@ impl HttpContext for CacheFilter {
                 // Saving request data to use when there is response from 3scale
                 self.req_data = request_data.clone();
                 // Fetching new application state using authorize endpoint
-                return do_auth_call(self, self, &request_data);
+                do_auth_call(self, self, &request_data)
             }
         }
     }
@@ -115,11 +115,7 @@ impl CacheFilter {
         true
     }
 
-    fn is_rate_limited(
-        &mut self,
-        app: &RefCell<Application>,
-        _current_time: &Duration,
-    ) -> bool {
+    fn is_rate_limited(&mut self, app: &RefCell<Application>, _current_time: &Duration) -> bool {
         for (metric, hits) in self.req_data.metrics.borrow().iter() {
             // Check metric is present inside local cache
             if !app.borrow().local_state.borrow().contains_key(metric) {
@@ -135,7 +131,16 @@ impl CacheFilter {
             }*/
 
             // If any metric is rate-limited then whole request is restricted
-            if ((app.borrow().local_state.borrow().get(metric).unwrap().left_hits - hits) as i32) < 0 {
+            if ((app
+                .borrow()
+                .local_state
+                .borrow()
+                .get(metric)
+                .unwrap()
+                .left_hits
+                - hits) as i32)
+                < 0
+            {
                 return true;
             }
         }
@@ -144,20 +149,26 @@ impl CacheFilter {
             self.update_cache_from_singleton = true;
         }
         false
-    }    
+    }
 }
 
 impl Context for CacheFilter {
     fn on_http_call_response(&mut self, token_id: u32, _: usize, body_size: usize, _: usize) {
-        info!("ctxt {}: Recieved response from 3scale: token: {}", self.context_id, token_id);
-        match self.get_http_call_response_body(0,body_size) {
+        info!(
+            "ctxt {}: Recieved response from 3scale: token: {}",
+            self.context_id, token_id
+        );
+        match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                     Ok(_response) => {
                         // Handle cache hit here
-                    },
+                    }
                     Err(e) => {
-                        info!("Parsing response from 3scale failed due to: {} with token: {}", e, token_id);
+                        info!(
+                            "Parsing response from 3scale failed due to: {} with token: {}",
+                            e, token_id
+                        );
                         request_process_failure(self, self);
                     }
                 }
