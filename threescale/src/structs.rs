@@ -44,9 +44,22 @@ pub struct Application {
 // Request data recieved from previous filters
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ThreescaleData {
+    // TODO: App_key, user_key is also possible as an input
     pub app_id: String,
     pub service_id: String,
+    pub service_token: String,
     pub metrics: RefCell<HashMap<String, u32>>,
+}
+
+impl Default for ThreescaleData {
+    fn default() -> Self {
+        ThreescaleData {
+            app_id: "".to_owned(),
+            service_id: "".to_owned(),
+            service_token: "".to_owned(),
+            metrics: RefCell::new(HashMap::new()),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]

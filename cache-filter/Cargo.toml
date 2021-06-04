@@ -21,3 +21,5 @@ log = "0.4"
 serde-humanize-rs = "0.1"
 proxy-wasm = "0.1"
 bincode = "1.0"
+threescalers = { git = "https://github.com/3scale-rs/threescalers", branch = "master" }
+serde_xml = "0.9"

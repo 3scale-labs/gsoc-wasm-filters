@@ -5,6 +5,7 @@ use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
     types::{ContextType, LogLevel},
 };
+use threescale::structs::ThreescaleData;
 
 #[no_mangle]
 pub fn _start() {
@@ -34,7 +35,7 @@ impl RootContext for CacheFilterRoot {
             Some(c) => c,
             None => {
                 warn!("Configuration missing. Please check the envoy.yaml file for filter configuration");
-                return false;
+                return true;
             }
         };
 
@@ -47,7 +48,7 @@ impl RootContext for CacheFilterRoot {
             }
             Err(e) => {
                 warn!("Failed to parse envoy.yaml configuration: {:?}", e);
-                false
+                true
             }
         }
     }
@@ -58,6 +59,7 @@ impl RootContext for CacheFilterRoot {
             config: self.config.clone(),
             update_cache_from_singleton: false,
             cache_key: String::new(),
+            req_data: ThreescaleData::default(),
         }))
     }
 
