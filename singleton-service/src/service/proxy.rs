@@ -31,7 +31,7 @@ pub fn _start() {
             delta_store: DeltaStore {
                 last_update: None,
                 request_count: 0,
-                deltas: RefCell::new(HashMap::new()),
+                deltas: HashMap::new(),
             },
         })
     });
