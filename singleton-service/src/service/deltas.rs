@@ -1,3 +1,4 @@
+use crate::service::report::*;
 use chrono::offset::Utc;
 use chrono::DateTime;
 use std::cell::RefCell;
@@ -5,8 +6,8 @@ use std::collections::HashMap;
 use threescale::structs::{Application, ThreescaleData};
 
 pub struct AppDelta {
-    key_type: String,
-    usages: HashMap<String, u32>,
+    pub key_type: String,
+    pub usages: HashMap<String, u32>,
 }
 
 // getter and setter vs dot
@@ -26,11 +27,17 @@ impl DeltaStore {
                     DeltaStore::update_app_delta(app, threescale);
                     true
                 }
-                None => {DeltaStore::add_app_delta(service, threescale)}
+                None => DeltaStore::add_app_delta(service, threescale),
             },
             None => {
                 let mut usages: HashMap<String, AppDelta> = HashMap::new();
-                usages.insert(threescale.app_id.clone(), AppDelta {key_type: "user_key".to_string(), usages: HashMap::new()});
+                usages.insert(
+                    threescale.app_id.clone(),
+                    AppDelta {
+                        key_type: "user_key".to_string(),
+                        usages: threescale.metrics.borrow().clone(),
+                    },
+                );
                 self.deltas.insert(threescale.service_id.clone(), usages);
                 true
             }
@@ -40,6 +47,9 @@ impl DeltaStore {
     /// Method to flush delta store to 3scale SM API.
     #[allow(dead_code)]
     pub fn flush_deltas(&mut self) -> bool {
+        for (service_key, apps) in self.deltas.drain() {
+            let report: Report = report(&service_key, &apps).unwrap();
+        }
         true
     }
 
@@ -71,7 +81,13 @@ impl DeltaStore {
     }
 
     fn add_app_delta(service: &mut HashMap<String, AppDelta>, threescale: &ThreescaleData) -> bool {
-        service.insert(threescale.app_id.clone(), AppDelta{ key_type: "user_key".to_string(), usages: HashMap::new()});
+        service.insert(
+            threescale.app_id.clone(),
+            AppDelta {
+                key_type: "user_key".to_string(),
+                usages: threescale.metrics.borrow().clone(),
+            },
+        );
         true
     }
 }

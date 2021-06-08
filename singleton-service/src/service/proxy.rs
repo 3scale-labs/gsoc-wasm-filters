@@ -127,40 +127,40 @@ impl RootContext for SingletonService {
     fn on_tick(&mut self) {
         // This is just a demo of a single Report Call to test the Report call untill bulk requests are implemented.
         info!("onTick triggerd");
-        let report: Report = report().unwrap();
-        let request = build_report_request(&report).unwrap();
-        let (uri, body) = request.uri_and_body();
-        info!("request: {:?}", request);
-        let headers = request
-            .headers
-            .iter()
-            .map(|(key, value)| (key.as_str(), value.as_str()))
-            .collect::<Vec<_>>();
-        let upstream = Upstream {
-            name: "3scale-SM-API".to_string(),
-            url: "https://su1.3scale.net".parse().unwrap(),
-            timeout: Duration::from_millis(5000),
-        };
-        let call_token = match upstream.call(
-            self,
-            uri.as_ref(),
-            request.method.as_str(),
-            headers,
-            body.map(str::as_bytes),
-            None,
-            None,
-        ) {
-            Ok(call_token) => call_token,
-            Err(e) => {
-                info!("Error: {:?}", e);
-                // TODO : Handle error properly with a suitable retry mechanism.
-                panic!("Error: {:?}", e)
-            }
-        };
-        info!(
-            "threescale_cache_singleton: on_http_request_headers: call token is {}",
-            call_token
-        );
+        // let report: Report = report().unwrap();
+        // let request = build_report_request(&report).unwrap();
+        // let (uri, body) = request.uri_and_body();
+        // info!("request: {:?}", request);
+        // let headers = request
+        //     .headers
+        //     .iter()
+        //     .map(|(key, value)| (key.as_str(), value.as_str()))
+        //     .collect::<Vec<_>>();
+        // let upstream = Upstream {
+        //     name: "3scale-SM-API".to_string(),
+        //     url: "https://su1.3scale.net".parse().unwrap(),
+        //     timeout: Duration::from_millis(5000),
+        // };
+        // let call_token = match upstream.call(
+        //     self,
+        //     uri.as_ref(),
+        //     request.method.as_str(),
+        //     headers,
+        //     body.map(str::as_bytes),
+        //     None,
+        //     None,
+        // ) {
+        //     Ok(call_token) => call_token,
+        //     Err(e) => {
+        //         info!("Error: {:?}", e);
+        //         // TODO : Handle error properly with a suitable retry mechanism.
+        //         panic!("Error: {:?}", e)
+        //     }
+        // };
+        // info!(
+        //     "threescale_cache_singleton: on_http_request_headers: call token is {}",
+        //     call_token
+        // );
     }
 }
 
