@@ -5,12 +5,12 @@ use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Period {
-    Minute = 60,
-    Hour = 3600,
-    Day = 86400,
-    Week = 604800,
-    Month = 2592000,
-    Year = 31536000,
+    Minute,
+    Hour,
+    Day,
+    Week,
+    Month,
+    Year,
     Eternity,
 }
 
