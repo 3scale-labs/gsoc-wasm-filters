@@ -44,7 +44,7 @@ dependencies = [
  "serde_json",
  "serde_xml",
  "threescale",
- "threescalers",
+ "threescalers 0.7.0 (git+https://github.com/rahulanand16nov/threescalers)",
 ]
 
 [[package]]
@@ -288,7 +288,7 @@ dependencies = [
  "serde-humanize-rs",
  "serde_json",
  "threescale",
- "threescalers",
+ "threescalers 0.7.0 (git+https://github.com/3scale-rs/threescalers)",
  "url",
 ]
 
@@ -339,6 +339,20 @@ dependencies = [
 name = "threescalers"
 version = "0.7.0"
 source = "git+https://github.com/3scale-rs/threescalers?branch=master#c7fb31a2bf064da06197caa7830576b9d80ca3d2"
+dependencies = [
+ "anyhow",
+ "autocfg 1.0.1 (git+https://github.com/unleashed/autocfg?branch=probe_feature)",
+ "chrono",
+ "no-std-compat",
+ "percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.126",
+ "serde-xml-rs",
+]
+
+[[package]]
+name = "threescalers"
+version = "0.7.0"
+source = "git+https://github.com/rahulanand16nov/threescalers?branch=master#2d53e4879dbedbe0767e7bfcaa9805b3ca7d9c5a"
 dependencies = [
  "anyhow",
  "autocfg 1.0.1 (git+https://github.com/unleashed/autocfg?branch=probe_feature)",

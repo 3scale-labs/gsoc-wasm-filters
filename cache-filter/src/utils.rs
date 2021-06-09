@@ -3,8 +3,8 @@ use log::info;
 use proxy_wasm::types::Action;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use threescale::structs::ThreescaleData;
-use threescalers::{credentials::*, service::Service};
+use threescale::structs::{Period, ThreescaleData};
+use threescalers::{credentials::*, response::Period as Response_Period, service::Service};
 
 // Parse request data and return it back inside the struct
 pub fn get_request_data() -> Option<ThreescaleData> {
@@ -108,4 +108,16 @@ pub fn do_auth_call<C: proxy_wasm::traits::HttpContext>(
     };
 
     Action::Continue
+}
+
+pub fn period_from_response(res_period: &Response_Period) -> Period {
+    match res_period {
+        Response_Period::Minute => Period::Minute,
+        Response_Period::Hour => Period::Hour,
+        Response_Period::Day => Period::Day,
+        Response_Period::Week => Period::Week,
+        Response_Period::Month => Period::Month,
+        Response_Period::Year => Period::Year,
+        Response_Period::Eternity => Period::Eternity,
+    }
 }

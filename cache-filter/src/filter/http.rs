@@ -1,6 +1,6 @@
 use crate::{
     configuration::FilterConfig,
-    utils::{do_auth_call, get_request_data, request_process_failure},
+    utils::{do_auth_call, get_request_data, period_from_response, request_process_failure},
 };
 use log::{debug, info};
 use proxy_wasm::{
@@ -8,13 +8,15 @@ use proxy_wasm::{
     types::Action,
 };
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::convert::TryInto;
 use std::str::FromStr;
 use std::time::{Duration, UNIX_EPOCH};
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
-    structs::{Application, Message, ThreescaleData},
+    structs::{Application, Message, PeriodWindow, ThreescaleData, UsageReport},
 };
-use threescalers::response::Authorization;
+use threescalers::response::{Authorization, UsageReports};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
@@ -161,8 +163,47 @@ impl Context for CacheFilter {
         match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
-                    Ok(_response) => {
-                        // Handle cache hit here
+                    Ok(Authorization::Ok(response)) => {
+                        // Form application struct from the response
+                        let key_split = self.cache_key.split('_').collect::<Vec<_>>();
+                        let mut state = HashMap::new();
+                        let UsageReports::UsageReports(reports) = response.usage_reports();
+                        for usage in reports {
+                            state.insert(
+                                usage.metric.clone(),
+                                UsageReport {
+                                    period_window: PeriodWindow {
+                                        // i64 to u64 but value will always be positive
+                                        start: Duration::from_secs(
+                                            usage.period_start.0.try_into().unwrap(),
+                                        ),
+                                        end: Duration::from_secs(
+                                            usage.period_end.0.try_into().unwrap(),
+                                        ),
+                                        window_type: period_from_response(&usage.period),
+                                    },
+                                    left_hits: usage.current_value,
+                                    max_value: usage.max_value,
+                                },
+                            );
+                        }
+                        let mut hierarchy = HashMap::new();
+                        if let Some(metrics) = response.hierarchy() {
+                            for (parent, childrens) in metrics.iter() {
+                                hierarchy.insert(parent.clone(), childrens.clone());
+                            }
+                        }
+                        let app = Application {
+                            app_id: key_split[0].to_string(),
+                            service_id: key_split[1].to_string(),
+                            local_state: RefCell::new(state),
+                            metric_hierarchy: RefCell::new(hierarchy),
+                        };
+                        set_application_to_cache(&self.cache_key, &app, true, None);
+                    }
+                    Ok(Authorization::Denied(denied_auth)) => {
+                        info!("Authorization was denied with code: {}", denied_auth.code());
+                        request_process_failure(self, self);
                     }
                     Err(e) => {
                         info!(

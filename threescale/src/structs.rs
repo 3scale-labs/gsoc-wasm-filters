@@ -26,9 +26,9 @@ pub struct PeriodWindow {
 #[derive(Serialize, Deserialize)]
 pub struct UsageReport {
     pub period_window: PeriodWindow,
-    pub left_hits: u32,
+    pub left_hits: u64,
     // Required to renew window untill new state is fetched from 3scale.
-    pub max_value: u32,
+    pub max_value: u64,
 }
 
 // Threescale's Application representation for cache
@@ -37,8 +37,7 @@ pub struct Application {
     pub app_id: String,
     pub service_id: String,
     pub local_state: RefCell<HashMap<String, UsageReport>>,
-    pub metric_hierarchy: RefCell<HashMap<String, String>>,
-    pub unlimited_counter: RefCell<HashMap<String, u32>>,
+    pub metric_hierarchy: RefCell<HashMap<String, Vec<String>>>,
 }
 
 // Request data recieved from previous filters
@@ -48,7 +47,7 @@ pub struct ThreescaleData {
     pub app_id: String,
     pub service_id: String,
     pub service_token: String,
-    pub metrics: RefCell<HashMap<String, u32>>,
+    pub metrics: RefCell<HashMap<String, u64>>,
 }
 
 impl Default for ThreescaleData {
