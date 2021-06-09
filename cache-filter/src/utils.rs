@@ -106,8 +106,8 @@ pub fn do_auth_call<C: proxy_wasm::traits::HttpContext>(
             return in_request_failure(ctx, filter);
         }
     };
-
-    Action::Continue
+    // Pause the current request to wait for the response from 3scale
+    Action::Pause
 }
 
 pub fn period_from_response(res_period: &ResponsePeriod) -> Period {

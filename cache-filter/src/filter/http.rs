@@ -211,7 +211,11 @@ impl Context for CacheFilter {
                         request_process_failure(self, self);
                     }
                 }
-                info!("Data recived from callout with token :{}", token_id);
+                info!(
+                    "Data received and parsed from callout with token :{}",
+                    token_id
+                );
+                self.resume_http_request();
             }
             None => {
                 info!("Found nothing in the response with token: {}", token_id);
