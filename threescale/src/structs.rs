@@ -3,14 +3,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Period {
-    Minute,
-    Hour,
-    Day,
-    Week,
-    Month,
-    Year,
+    Minute = 60,
+    Hour = 3600,
+    Day = 86400,
+    Week = 604800,
+    Month = 2592000,
+    Year = 31536000,
     Eternity,
 }
 
@@ -19,7 +19,7 @@ pub enum Period {
 pub struct PeriodWindow {
     pub start: Duration,
     pub end: Duration,
-    pub window_type: Period,
+    pub window: Period,
 }
 
 #[allow(dead_code)]
@@ -36,8 +36,8 @@ pub struct UsageReport {
 pub struct Application {
     pub app_id: String,
     pub service_id: String,
-    pub local_state: RefCell<HashMap<String, UsageReport>>,
-    pub metric_hierarchy: RefCell<HashMap<String, Vec<String>>>,
+    pub local_state: HashMap<String, UsageReport>,
+    pub metric_hierarchy: HashMap<String, Vec<String>>,
 }
 
 // Request data recieved from previous filters

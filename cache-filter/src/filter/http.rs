@@ -14,7 +14,7 @@ use std::str::FromStr;
 use std::time::{Duration, UNIX_EPOCH};
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
-    structs::{Application, Message, PeriodWindow, ThreescaleData, UsageReport},
+    structs::*,
 };
 use threescalers::response::{Authorization, UsageReports};
 
@@ -105,7 +105,8 @@ impl CacheFilter {
         };
         if self.is_rate_limited(app, &current_time) {
             info!("ctxt {}: Request is rate-limited", self.context_id);
-            // TODO: Add some identifier for rate-limit filter
+            // TODO: Add how many similar requests can be accepted.
+            self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
         } else {
             info!("ctxt {}: Request is allowed to pass", self.context_id);
             if !self.report_to_singleton(queue_id) {
@@ -117,36 +118,33 @@ impl CacheFilter {
         true
     }
 
-    fn is_rate_limited(&mut self, app: &RefCell<Application>, _current_time: &Duration) -> bool {
+    fn is_rate_limited(&mut self, app: &RefCell<Application>, current_time: &Duration) -> bool {
         for (metric, hits) in self.req_data.metrics.borrow().iter() {
-            // Check metric is present inside local cache
-            if !app.borrow().local_state.borrow().contains_key(metric) {
-                continue;
-            }
+            if let Some(usage_report) = app.borrow_mut().local_state.get_mut(metric) {
+                let mut period = &mut usage_report.period_window;
+                if period.window != Period::Eternity {
+                    // Taking care of period window expiration
+                    while period.end < *current_time {
+                        // Get new window and reset left_hits to max value
+                        let secs_to_add: u64 = period.window.clone() as u64;
+                        period.start = period
+                            .start
+                            .checked_add(Duration::new(secs_to_add, 0))
+                            .unwrap();
+                        period.end = period
+                            .end
+                            .checked_add(Duration::new(secs_to_add, 0))
+                            .unwrap();
+                        usage_report.left_hits = usage_report.max_value;
+                    }
 
-            /* Check period window expiration
-            if app.local_state.borrow().get(metric).unwrap().period_window.end < current_time {
-                // Period window is expired
-                // Update period window using get_new_window for each metric
-                // But first confirm how to deal with time sync between host and 3scale
-                // Reset left_hits to max value
-            }*/
-
-            // If any metric is rate-limited then whole request is restricted
-            if ((app
-                .borrow()
-                .local_state
-                .borrow()
-                .get(metric)
-                .unwrap()
-                .left_hits
-                - hits) as i32)
-                < 0
-            {
-                return true;
+                    if usage_report.left_hits < *hits {
+                        return true;
+                    }
+                    usage_report.left_hits -= *hits;
+                }
             }
         }
-
         if !set_application_to_cache(self.cache_key.as_str(), &app.borrow(), true, None) {
             self.update_cache_from_singleton = true;
         }
@@ -180,7 +178,7 @@ impl Context for CacheFilter {
                                         end: Duration::from_secs(
                                             usage.period_end.0.try_into().unwrap(),
                                         ),
-                                        window_type: period_from_response(&usage.period),
+                                        window: period_from_response(&usage.period),
                                     },
                                     left_hits: usage.current_value,
                                     max_value: usage.max_value,
@@ -196,8 +194,8 @@ impl Context for CacheFilter {
                         let app = Application {
                             app_id: key_split[0].to_string(),
                             service_id: key_split[1].to_string(),
-                            local_state: RefCell::new(state),
-                            metric_hierarchy: RefCell::new(hierarchy),
+                            local_state: state,
+                            metric_hierarchy: hierarchy,
                         };
                         set_application_to_cache(&self.cache_key, &app, true, None);
                     }
