@@ -5,13 +5,27 @@ use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Period {
-    Minute = 60,
-    Hour = 3600,
-    Day = 86400,
-    Week = 604800,
-    Month = 2592000,
-    Year = 31536000,
+    Minute,
+    Hour,
+    Day,
+    Week,
+    Month,
+    Year,
     Eternity,
+}
+
+impl Period {
+    pub fn value(&self) -> u64 {
+        match *self {
+            Period::Minute => 60,
+            Period::Hour => 3600,
+            Period::Day => 86400,
+            Period::Week => 604800,
+            Period::Month => 2592000,
+            Period::Year => 31536000,
+            Period::Eternity => u64::MAX,
+        }
+    }
 }
 
 #[allow(dead_code)]

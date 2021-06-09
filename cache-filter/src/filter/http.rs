@@ -122,21 +122,21 @@ impl CacheFilter {
         for (metric, hits) in self.req_data.metrics.borrow().iter() {
             if let Some(usage_report) = app.borrow_mut().local_state.get_mut(metric) {
                 let mut period = &mut usage_report.period_window;
-                if period.window != Period::Eternity {
+                if period.window != Period::Eternity && period.end < *current_time {
                     // Taking care of period window expiration
-                    while period.end < *current_time {
-                        // Get new window and reset left_hits to max value
-                        let secs_to_add: u64 = period.window.clone() as u64;
-                        period.start = period
-                            .start
-                            .checked_add(Duration::new(secs_to_add, 0))
-                            .unwrap();
-                        period.end = period
-                            .end
-                            .checked_add(Duration::new(secs_to_add, 0))
-                            .unwrap();
-                        usage_report.left_hits = usage_report.max_value;
-                    }
+                    let num_windows = current_time.checked_sub(period.start).unwrap().as_secs()
+                        / period.window.value();
+                    let seconds_to_add = num_windows * period.window.value();
+                    // Get new window and reset left_hits to max value
+                    period.start = period
+                        .start
+                        .checked_add(Duration::from_secs(seconds_to_add))
+                        .unwrap();
+                    period.end = period
+                        .end
+                        .checked_add(Duration::from_secs(seconds_to_add))
+                        .unwrap();
+                    usage_report.left_hits = usage_report.max_value;
 
                     if usage_report.left_hits < *hits {
                         return true;
