@@ -122,14 +122,14 @@ pub fn period_from_response(res_period: &ResponsePeriod) -> Period {
     }
 }
 
-pub fn period_from_response(res_period: &Response_Period) -> Period {
+pub fn period_from_response(res_period: &ResponsePeriod) -> Period {
     match res_period {
-        Response_Period::Minute => Period::Minute,
-        Response_Period::Hour => Period::Hour,
-        Response_Period::Day => Period::Day,
-        Response_Period::Week => Period::Week,
-        Response_Period::Month => Period::Month,
-        Response_Period::Year => Period::Year,
-        Response_Period::Eternity => Period::Eternity,
+        ResponsePeriod::Minute => Period::Minute,
+        ResponsePeriod::Hour => Period::Hour,
+        ResponsePeriod::Day => Period::Day,
+        ResponsePeriod::Week => Period::Week,
+        ResponsePeriod::Month => Period::Month,
+        ResponsePeriod::Year => Period::Year,
+        ResponsePeriod::Eternity => Period::Eternity,
     }
 }
