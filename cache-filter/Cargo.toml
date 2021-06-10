@@ -23,3 +23,4 @@ proxy-wasm = "0.1"
 bincode = "1.0"
 threescalers = { git = "https://github.com/rahulanand16nov/threescalers", branch = "master" }
 serde_xml = "0.9"
+thiserror = "1.0"

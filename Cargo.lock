@@ -43,6 +43,7 @@ dependencies = [
  "serde-humanize-rs",
  "serde_json",
  "serde_xml",
+ "thiserror",
  "threescale",
  "threescalers 0.7.0 (git+https://github.com/rahulanand16nov/threescalers)",
 ]

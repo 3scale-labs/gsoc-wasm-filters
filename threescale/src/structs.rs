@@ -15,7 +15,7 @@ pub enum Period {
 }
 
 impl Period {
-    pub fn value(&self) -> u64 {
+    pub fn as_secs(&self) -> u64 {
         match *self {
             Period::Minute => 60,
             Period::Hour => 3600,

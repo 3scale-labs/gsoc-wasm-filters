@@ -1,8 +1,11 @@
 use crate::{
     configuration::FilterConfig,
-    utils::{do_auth_call, get_request_data, period_from_response, request_process_failure},
+    utils::{
+        do_auth_call, get_request_data, in_request_failure, period_from_response,
+        request_process_failure,
+    },
 };
-use log::{debug, info};
+use log::{info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext},
     types::Action,
@@ -20,6 +23,20 @@ use threescalers::response::{Authorization, UsageReports};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
+
+#[derive(Debug, thiserror::Error)]
+enum RateLimitedError {
+    #[error("overflow due to two duration addition")]
+    DurOverflowErr,
+}
+
+#[derive(Debug, thiserror::Error)]
+enum CacheHitError {
+    #[error("duration since time later than self")]
+    TimeConversionErr(#[from] std::time::SystemTimeError),
+    #[error("failure of is_rate_limited error")]
+    RateLimitErr(#[from] RateLimitedError),
+}
 
 pub struct CacheFilter {
     pub context_id: u32,
@@ -49,11 +66,15 @@ impl HttpContext for CacheFilter {
         match get_application_from_cache(self.cache_key.as_str()) {
             Some((app, _)) => {
                 info!("ctxt {}: Cache Hit", context_id);
+
                 let app_ref = RefCell::new(app);
-                if !self.handle_cache_hit(&app_ref) {
-                    return Action::Pause;
+                match self.handle_cache_hit(&app_ref) {
+                    Ok(()) => Action::Pause,
+                    Err(e) => {
+                        warn!("ctxt {}: cache hit flow failed: {:#?}", context_id, e);
+                        in_request_failure(self, self)
+                    }
                 }
-                Action::Continue
             }
             None => {
                 info!("ctxt {}: Cache Miss", context_id);
@@ -94,16 +115,13 @@ impl CacheFilter {
         true
     }
 
-    fn handle_cache_hit(&mut self, app: &RefCell<Application>) -> bool {
+    fn handle_cache_hit(&mut self, app: &RefCell<Application>) -> Result<(), CacheHitError> {
         let queue_id = self.resolve_shared_queue(VM_ID, QUEUE_NAME);
-        let current_time = match self.get_current_time().duration_since(UNIX_EPOCH) {
-            Ok(time) => time,
-            Err(e) => {
-                debug!("Failed to get time from host due to: {}", e);
-                return false;
-            }
-        };
-        if self.is_rate_limited(app, &current_time) {
+
+        let current_time = self.get_current_time().duration_since(UNIX_EPOCH)?;
+
+        let rate_limited: bool = self.is_rate_limited(app, &current_time)?;
+        if rate_limited {
             info!("ctxt {}: Request is rate-limited", self.context_id);
             // TODO: Add how many similar requests can be accepted.
             self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
@@ -115,31 +133,41 @@ impl CacheFilter {
                 // Report to 3scale and get new state using authrep endpoint
             }
         }
-        true
+        Ok(())
     }
 
-    fn is_rate_limited(&mut self, app: &RefCell<Application>, current_time: &Duration) -> bool {
+    fn is_rate_limited(
+        &mut self,
+        app: &RefCell<Application>,
+        current_time: &Duration,
+    ) -> Result<bool, RateLimitedError> {
         for (metric, hits) in self.req_data.metrics.borrow().iter() {
             if let Some(usage_report) = app.borrow_mut().local_state.get_mut(metric) {
                 let mut period = &mut usage_report.period_window;
+
                 if period.window != Period::Eternity && period.end < *current_time {
-                    // Taking care of period window expiration
-                    let num_windows = current_time.checked_sub(period.start).unwrap().as_secs()
-                        / period.window.value();
-                    let seconds_to_add = num_windows * period.window.value();
-                    // Get new window and reset left_hits to max value
+                    // taking care of period window expiration
+                    let time_diff = current_time
+                        .checked_sub(period.start)
+                        .ok_or(RateLimitedError::DurOverflowErr)?;
+                    let num_windows = time_diff.as_secs() / period.window.as_secs();
+                    let seconds_to_add = num_windows * period.window.as_secs();
+
+                    // get new window and reset left hits to max value
                     period.start = period
                         .start
                         .checked_add(Duration::from_secs(seconds_to_add))
-                        .unwrap();
+                        .ok_or(RateLimitedError::DurOverflowErr)?;
+
                     period.end = period
                         .end
                         .checked_add(Duration::from_secs(seconds_to_add))
-                        .unwrap();
+                        .ok_or(RateLimitedError::DurOverflowErr)?;
+
                     usage_report.left_hits = usage_report.max_value;
 
                     if usage_report.left_hits < *hits {
-                        return true;
+                        return Ok(true);
                     }
                     usage_report.left_hits -= *hits;
                 }
@@ -148,14 +176,14 @@ impl CacheFilter {
         if !set_application_to_cache(self.cache_key.as_str(), &app.borrow(), true, None) {
             self.update_cache_from_singleton = true;
         }
-        false
+        Ok(false)
     }
 }
 
 impl Context for CacheFilter {
     fn on_http_call_response(&mut self, token_id: u32, _: usize, body_size: usize, _: usize) {
         info!(
-            "ctxt {}: Recieved response from 3scale: token: {}",
+            "ctxt {}: recieved response from 3scale: token: {}",
             self.context_id, token_id
         );
         match self.get_http_call_response_body(0, body_size) {
@@ -166,6 +194,7 @@ impl Context for CacheFilter {
                         let key_split = self.cache_key.split('_').collect::<Vec<_>>();
                         let mut state = HashMap::new();
                         let UsageReports::UsageReports(reports) = response.usage_reports();
+
                         for usage in reports {
                             state.insert(
                                 usage.metric.clone(),
@@ -185,37 +214,47 @@ impl Context for CacheFilter {
                                 },
                             );
                         }
+
                         let mut hierarchy = HashMap::new();
                         if let Some(metrics) = response.hierarchy() {
                             for (parent, childrens) in metrics.iter() {
                                 hierarchy.insert(parent.clone(), childrens.clone());
                             }
                         }
+
                         let app = Application {
                             app_id: key_split[0].to_string(),
                             service_id: key_split[1].to_string(),
                             local_state: state,
                             metric_hierarchy: hierarchy,
                         };
+
                         set_application_to_cache(&self.cache_key, &app, true, None);
+
+                        if let Err(e) = self.handle_cache_hit(&RefCell::new(app)) {
+                            warn!("ctxt {}: cache hit flow failed: {:?}", self.context_id, e);
+                            request_process_failure(self, self)
+                        }
                     }
                     Ok(Authorization::Denied(denied_auth)) => {
-                        info!("Authorization was denied with code: {}", denied_auth.code());
+                        info!("authorization was denied with code: {}", denied_auth.code());
                         request_process_failure(self, self);
+                        return;
                     }
                     Err(e) => {
                         info!(
-                            "Parsing response from 3scale failed due to: {} with token: {}",
+                            "parsing response from 3scale failed: {:#?} with token: {}",
                             e, token_id
                         );
                         request_process_failure(self, self);
+                        return;
                     }
                 }
+
                 info!(
-                    "Data received and parsed from callout with token :{}",
+                    "data received and parsed from callout with token :{}",
                     token_id
                 );
-                self.resume_http_request();
             }
             None => {
                 info!("Found nothing in the response with token: {}", token_id);
