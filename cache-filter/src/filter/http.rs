@@ -278,19 +278,11 @@ impl Context for CacheFilter {
                         return;
                     }
                 }
-<<<<<<< HEAD
 
                 info!(
                     "data received and parsed from callout with token :{}",
                     token_id
                 );
-=======
-                info!(
-                    "Data received and parsed from callout with token :{}",
-                    token_id
-                );
-                self.resume_http_request();
->>>>>>> Minor cases caught under dev deployment
             }
             None => {
                 info!("Found nothing in the response with token: {}", token_id);
