@@ -19,23 +19,31 @@ use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::*,
 };
-use threescalers::response::{Authorization, UsageReports};
+use threescalers::response::{Authorization, OkAuthorization, UsageReports};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 enum RateLimitedError {
     #[error("overflow due to two duration addition")]
     DurOverflowErr,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 enum CacheHitError {
     #[error("duration since time later than self")]
     TimeConversionErr(#[from] std::time::SystemTimeError),
     #[error("failure of is_rate_limited error")]
     RateLimitErr(#[from] RateLimitedError),
+}
+
+#[derive(Debug, thiserror::Error)]
+enum AuthResponseError {
+    #[error("failure to follow cache hit flow")]
+    CacheHitErr(#[from] CacheHitError),
+    #[error("conversion from i64 time to u64 duration failed")]
+    NegativeTimeErr,
 }
 
 pub struct CacheFilter {
@@ -178,6 +186,64 @@ impl CacheFilter {
         }
         Ok(false)
     }
+
+    fn handle_auth_response(
+        &mut self,
+        response: &OkAuthorization,
+    ) -> Result<(), AuthResponseError> {
+        // Form application struct from the response
+        let key_split = self.cache_key.split('_').collect::<Vec<_>>();
+        let mut state = HashMap::new();
+        let UsageReports::UsageReports(reports) = response.usage_reports();
+
+        for usage in reports {
+            state.insert(
+                usage.metric.clone(),
+                UsageReport {
+                    period_window: PeriodWindow {
+                        start: Duration::from_secs(
+                            usage
+                                .period_start
+                                .0
+                                .try_into()
+                                .or(Err(AuthResponseError::NegativeTimeErr))?,
+                        ),
+                        end: Duration::from_secs(
+                            usage
+                                .period_end
+                                .0
+                                .try_into()
+                                .or(Err(AuthResponseError::NegativeTimeErr))?,
+                        ),
+                        window: period_from_response(&usage.period),
+                    },
+                    left_hits: usage.current_value,
+                    max_value: usage.max_value,
+                },
+            );
+        }
+
+        let mut hierarchy = HashMap::new();
+        if let Some(metrics) = response.hierarchy() {
+            for (parent, childrens) in metrics.iter() {
+                hierarchy.insert(parent.clone(), childrens.clone());
+            }
+        }
+
+        let app = Application {
+            app_id: key_split[0].to_string(),
+            service_id: key_split[1].to_string(),
+            local_state: state,
+            metric_hierarchy: hierarchy,
+        };
+
+        set_application_to_cache(&self.cache_key, &app, true, None);
+
+        match self.handle_cache_hit(&RefCell::new(app)) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(AuthResponseError::CacheHitErr(e)),
+        }
+    }
 }
 
 impl Context for CacheFilter {
@@ -190,49 +256,8 @@ impl Context for CacheFilter {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                     Ok(Authorization::Ok(response)) => {
-                        // Form application struct from the response
-                        let key_split = self.cache_key.split('_').collect::<Vec<_>>();
-                        let mut state = HashMap::new();
-                        let UsageReports::UsageReports(reports) = response.usage_reports();
-
-                        for usage in reports {
-                            state.insert(
-                                usage.metric.clone(),
-                                UsageReport {
-                                    period_window: PeriodWindow {
-                                        // i64 to u64 but value will always be positive
-                                        start: Duration::from_secs(
-                                            usage.period_start.0.try_into().unwrap(),
-                                        ),
-                                        end: Duration::from_secs(
-                                            usage.period_end.0.try_into().unwrap(),
-                                        ),
-                                        window: period_from_response(&usage.period),
-                                    },
-                                    left_hits: usage.current_value,
-                                    max_value: usage.max_value,
-                                },
-                            );
-                        }
-
-                        let mut hierarchy = HashMap::new();
-                        if let Some(metrics) = response.hierarchy() {
-                            for (parent, childrens) in metrics.iter() {
-                                hierarchy.insert(parent.clone(), childrens.clone());
-                            }
-                        }
-
-                        let app = Application {
-                            app_id: key_split[0].to_string(),
-                            service_id: key_split[1].to_string(),
-                            local_state: state,
-                            metric_hierarchy: hierarchy,
-                        };
-
-                        set_application_to_cache(&self.cache_key, &app, true, None);
-
-                        if let Err(e) = self.handle_cache_hit(&RefCell::new(app)) {
-                            warn!("ctxt {}: cache hit flow failed: {:?}", self.context_id, e);
+                        if let Err(e) = self.handle_auth_response(&response) {
+                            warn!("ctxt {}: handling auth response failed: {:?}", self.context_id, e);
                             request_process_failure(self, self)
                         }
                     }
