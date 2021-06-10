@@ -1,10 +1,10 @@
-use crate::service::report::*;
 use chrono::offset::Utc;
 use chrono::DateTime;
-use std::cell::RefCell;
+use log::{debug, info, warn};
 use std::collections::HashMap;
-use threescale::structs::{Application, ThreescaleData};
+use threescale::structs::ThreescaleData;
 
+#[derive(Clone)]
 pub struct AppDelta {
     pub key_type: String,
     pub usages: HashMap<String, u32>,
@@ -15,19 +15,30 @@ pub struct DeltaStore {
     pub last_update: Option<DateTime<Utc>>,
     pub deltas: HashMap<String, HashMap<String, AppDelta>>,
     pub request_count: u32,
+    pub capacity: u32,
+}
+
+#[derive(PartialEq)]
+pub enum DeltaStoreState {
+    Flush,
+    Ok,
 }
 
 impl DeltaStore {
     /// Update delta store with a new entry of type ThreescaleData. If container size reached, then
     /// initiate delta store flush logic.
-    pub fn update_delta_store(&mut self, threescale: &ThreescaleData) -> bool {
+    pub fn update_delta_store(
+        &mut self,
+        threescale: &ThreescaleData,
+    ) -> Result<DeltaStoreState, anyhow::Error> {
         match self.get_service(&threescale.service_id, &threescale.service_token) {
             Some(service) => match DeltaStore::get_app_delta(&threescale.app_id, service) {
                 Some(app) => {
                     DeltaStore::update_app_delta(app, threescale);
-                    true
                 }
-                None => DeltaStore::add_app_delta(service, threescale),
+                None => {
+                    DeltaStore::add_app_delta(service, threescale);
+                }
             },
             None => {
                 let mut usages: HashMap<String, AppDelta> = HashMap::new();
@@ -38,20 +49,28 @@ impl DeltaStore {
                         usages: threescale.metrics.borrow().clone(),
                     },
                 );
-                self.deltas.insert(threescale.service_id.clone(), usages);
-                true
+                let delta_key = format!("{}_{}", threescale.service_id, threescale.service_token);
+                self.deltas.insert(delta_key, usages);
             }
+        }
+        self.request_count += 1;
+        if self.request_count == self.capacity {
+            Ok(DeltaStoreState::Flush)
+        } else {
+            Ok(DeltaStoreState::Ok)
         }
     }
 
     /// Method to flush delta store to 3scale SM API.
-    #[allow(dead_code)]
-    pub fn flush_deltas(&mut self) -> bool {
-        for (service_key, apps) in self.deltas.drain() {
-            let report: Report = report(&service_key, &apps).unwrap();
-        }
-        true
-    }
+    // #[allow(dead_code)]
+    // pub fn flush_deltas(&mut self) -> bool {
+    //     for (service_key, apps) in self.deltas.drain() {
+    //         let report: Report = report(&service_key, &apps).unwrap();
+    //         let request = build_report_request(&report).unwrap();
+    //         dispatch_http_call(, headers: Vec<(&str, &str)>, body: Option<&[u8]>, trailers: Vec<(&str, &str)>, timeout: Duration)
+    //     }
+    //     true
+    // }
 
     fn get_app_delta<'a>(
         app_key: &'a str,

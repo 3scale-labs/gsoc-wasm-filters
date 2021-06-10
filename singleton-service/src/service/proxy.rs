@@ -1,5 +1,6 @@
 pub use crate::configuration::service::ServiceConfig;
 pub use crate::service::deltas::DeltaStore;
+use crate::service::deltas::{AppDelta, DeltaStoreState};
 use crate::service::report::*;
 use log::{debug, info, warn};
 use proxy_wasm::{
@@ -16,6 +17,7 @@ use threescale::{
     structs::{Message, ThreescaleData},
     utils::update_metrics,
 };
+use threescalers::http::Request;
 
 // QUEUE_NAME should be the same as the one in cache filter.
 const QUEUE_NAME: &str = "message_queue";
@@ -31,13 +33,14 @@ pub fn _start() {
             delta_store: DeltaStore {
                 last_update: None,
                 request_count: 0,
+                capacity: 2,
                 deltas: HashMap::new(),
             },
         })
     });
 }
 
-struct SingletonService {
+pub struct SingletonService {
     context_id: u32,
     config: ServiceConfig,
     queue_id: Option<u32>,
@@ -127,6 +130,51 @@ impl RootContext for SingletonService {
     fn on_tick(&mut self) {
         // This is just a demo of a single Report Call to test the Report call untill bulk requests are implemented.
         info!("onTick triggerd");
+        let metrics1: HashMap<String, u32> = [
+            ("hits".to_string(), 1_u32),
+            ("hits.79419".to_string(), 1_u32),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        let threescale1 = ThreescaleData {
+            app_id: "46de54605a1321aa3838480c5fa91bcc".to_string(),
+            service_id: "2555417902188".to_string(),
+            service_token: "6705c7d02e9a899d4db405dc1413361611e4250dfd12ec3dcbcea8c3de7cdd29"
+                .to_string(),
+            metrics: RefCell::new(metrics1),
+        };
+        let metrics2: HashMap<String, u32> = [
+            ("hits".to_string(), 1_u32),
+            ("hits.73545".to_string(), 1_u32),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        let threescale2 = ThreescaleData {
+            app_id: "de90b3d58dc5449572d2fdb7ae0af61a".to_string(),
+            service_id: "2555417889374".to_string(),
+            service_token: "e1abc8f29e6ba7dfed3fcc9c5399be41f7a881f85fa11df68b93a5d800c3c07a"
+                .to_string(),
+            metrics: RefCell::new(metrics2),
+        };
+        let state1 = self.delta_store.update_delta_store(&threescale1).unwrap();
+        if state1 == DeltaStoreState::Flush {
+            info!("Cache flush required. flushing....");
+            self.flush_local_cache();
+        }
+        let state2 = self.delta_store.update_delta_store(&threescale2).unwrap();
+        if state2 == DeltaStoreState::Flush {
+            info!("Cache flush required. flushing....");
+            self.flush_local_cache();
+        }
+        // let deltas = self.flush_delta_store();
+        // for (key, apps) in deltas {
+        //     let report: Report = report(&key, &apps).unwrap();
+        //     let request = build_report_request(&report).unwrap();
+        //     info!("report : {:?}", report);
+        //     self.perform_http_call(&request);
+        // }
         // let report: Report = report().unwrap();
         // let request = build_report_request(&report).unwrap();
         // let (uri, body) = request.uri_and_body();
@@ -164,7 +212,17 @@ impl RootContext for SingletonService {
     }
 }
 
-impl Context for SingletonService {}
+impl Context for SingletonService {
+    fn on_http_call_response(
+        &mut self,
+        token_id: u32,
+        _num_headers: usize,
+        _body_size: usize,
+        _num_trailers: usize,
+    ) {
+        info!("3scale SM API response for call token :{}", token_id);
+    }
+}
 
 impl SingletonService {
     /// update_application_cache method updates the local application cache if the cache update
@@ -196,5 +254,54 @@ impl SingletonService {
     #[allow(dead_code)]
     fn is_flush_required(&self) -> bool {
         true
+    }
+
+    fn perform_http_call(&self, request: &Request) {
+        let upstream = Upstream {
+            name: "3scale-SM-API".to_string(),
+            url: "https://su1.3scale.net".parse().unwrap(),
+            timeout: Duration::from_millis(5000),
+        };
+        let (uri, body) = request.uri_and_body();
+        let headers = request
+            .headers
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect::<Vec<_>>();
+        let call_token = match upstream.call(
+            self,
+            uri.as_ref(),
+            request.method.as_str(),
+            headers,
+            body.map(str::as_bytes),
+            None,
+            None,
+        ) {
+            Ok(call_token) => call_token,
+            Err(e) => {
+                panic!("Error occured performing http call : {:?}", e)
+            }
+        };
+        info!("http call performed. call token : {}", call_token)
+    }
+
+    fn flush_delta_store(&mut self) -> HashMap<String, HashMap<String, AppDelta>> {
+        // deltas.extend(self.delta_store.deltas.into_iter());
+        // self.delta_store.deltas.clear();
+        // assert!(self.delta_store.deltas.is_empty());
+        let deltas_cloned = self.delta_store.deltas.clone();
+        self.delta_store.deltas.clear();
+        assert!(self.delta_store.deltas.is_empty());
+        deltas_cloned
+    }
+
+    fn flush_local_cache(&mut self) {
+        let deltas = self.flush_delta_store();
+        for (key, apps) in deltas {
+            let report: Report = report(&key, &apps).unwrap();
+            let request = build_report_request(&report).unwrap();
+            info!("report : {:?}", report);
+            self.perform_http_call(&request);
+        }
     }
 }

@@ -12,6 +12,7 @@ use threescalers::{
     usage::Usage,
 };
 
+#[derive(Debug)]
 pub struct Report {
     service_id: String,
     service_token: String,
@@ -36,10 +37,10 @@ impl Report {
 /// to create a report, which is the proxy level representation. Then it will be used to build the report request
 /// which is of threescalers Report request type.
 pub fn report<'a>(
-    service_id: &'a str,
+    key: &'a str,
     apps: &'a HashMap<String, AppDelta>,
 ) -> Result<Report, anyhow::Error> {
-    let metrics = [("hits", "1"), ("hits.79419", "1")].to_vec();
+    let keys = key.split('_').collect::<Vec<_>>();
     let mut usages_map: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for e in apps {
         let (app_id, app_deltas): (&String, &AppDelta) = e;
@@ -52,9 +53,8 @@ pub fn report<'a>(
     }
     //usages_map.insert("46de54605a1321aa3838480c5fa91bcc".to_string(), metrics);
     Ok(Report {
-        service_id: service_id.to_string(),
-        service_token: "6705c7d02e9a899d4db405dc1413361611e4250dfd12ec3dcbcea8c3de7cdd29"
-            .to_string(),
+        service_id: keys[0].to_string(),
+        service_token: keys[1].to_string(),
         usages: usages_map,
     })
 }
