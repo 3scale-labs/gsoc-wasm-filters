@@ -33,7 +33,7 @@ pub fn _start() {
             delta_store: DeltaStore {
                 last_update: None,
                 request_count: 0,
-                capacity: 2,
+                capacity: 2, // TODO : Re-implement config parsing after finalizing the config structs.
                 deltas: HashMap::new(),
             },
         })
@@ -113,7 +113,8 @@ impl RootContext for SingletonService {
                         if message_received.update_cache_from_singleton {
                             self.update_application_cache(&threescale);
                         }
-                        self.delta_store.update_delta_store(&threescale);
+                        // TODO : Handle delta store update failure.
+                        self.delta_store.update_delta_store(&threescale).unwrap();
                     }
                     None => {
                         info!("No application found from the message queue entry")
@@ -128,8 +129,8 @@ impl RootContext for SingletonService {
     /// Delta store flush is required in case of a low traffic where it takes a long time to fill the delta store
     /// container.
     fn on_tick(&mut self) {
-        // This is just a demo of a single Report Call to test the Report call untill bulk requests are implemented.
-        info!("onTick triggerd");
+        // This is just a demo of adding delta entries to delta store and flushing them.
+        info!("onTick triggerd. starting test scenario....");
         let metrics1: HashMap<String, u32> = [
             ("hits".to_string(), 1_u32),
             ("hits.79419".to_string(), 1_u32),
@@ -168,47 +169,6 @@ impl RootContext for SingletonService {
             info!("Cache flush required. flushing....");
             self.flush_local_cache();
         }
-        // let deltas = self.flush_delta_store();
-        // for (key, apps) in deltas {
-        //     let report: Report = report(&key, &apps).unwrap();
-        //     let request = build_report_request(&report).unwrap();
-        //     info!("report : {:?}", report);
-        //     self.perform_http_call(&request);
-        // }
-        // let report: Report = report().unwrap();
-        // let request = build_report_request(&report).unwrap();
-        // let (uri, body) = request.uri_and_body();
-        // info!("request: {:?}", request);
-        // let headers = request
-        //     .headers
-        //     .iter()
-        //     .map(|(key, value)| (key.as_str(), value.as_str()))
-        //     .collect::<Vec<_>>();
-        // let upstream = Upstream {
-        //     name: "3scale-SM-API".to_string(),
-        //     url: "https://su1.3scale.net".parse().unwrap(),
-        //     timeout: Duration::from_millis(5000),
-        // };
-        // let call_token = match upstream.call(
-        //     self,
-        //     uri.as_ref(),
-        //     request.method.as_str(),
-        //     headers,
-        //     body.map(str::as_bytes),
-        //     None,
-        //     None,
-        // ) {
-        //     Ok(call_token) => call_token,
-        //     Err(e) => {
-        //         info!("Error: {:?}", e);
-        //         // TODO : Handle error properly with a suitable retry mechanism.
-        //         panic!("Error: {:?}", e)
-        //     }
-        // };
-        // info!(
-        //     "threescale_cache_singleton: on_http_request_headers: call token is {}",
-        //     call_token
-        // );
     }
 }
 
@@ -256,6 +216,8 @@ impl SingletonService {
         true
     }
 
+    /// This is a helper method to send http requests. Both Report and Auth calls will use this method to
+    /// send http requests after building relevant threescalers request type.
     fn perform_http_call(&self, request: &Request) {
         let upstream = Upstream {
             name: "3scale-SM-API".to_string(),
@@ -285,16 +247,18 @@ impl SingletonService {
         info!("http call performed. call token : {}", call_token)
     }
 
+    /// This method flush the deltas in the deltastore by making a clone and then
+    /// by emptying the deltastore hashmap.  
     fn flush_delta_store(&mut self) -> HashMap<String, HashMap<String, AppDelta>> {
-        // deltas.extend(self.delta_store.deltas.into_iter());
-        // self.delta_store.deltas.clear();
-        // assert!(self.delta_store.deltas.is_empty());
         let deltas_cloned = self.delta_store.deltas.clone();
         self.delta_store.deltas.clear();
         assert!(self.delta_store.deltas.is_empty());
         deltas_cloned
     }
 
+    /// This method will flush the local cache to the 3scale SM API by sending a report call per each service.
+    /// This method uses flush_delta_store(), build_report_request() and perform_http_call() helper methods to
+    /// flush local cache. This will be called when delta store is full or when timer based cache flush is required.
     fn flush_local_cache(&mut self) {
         let deltas = self.flush_delta_store();
         for (key, apps) in deltas {

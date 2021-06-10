@@ -1,6 +1,5 @@
 use chrono::offset::Utc;
 use chrono::DateTime;
-use log::{debug, info, warn};
 use std::collections::HashMap;
 use threescale::structs::ThreescaleData;
 
