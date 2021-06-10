@@ -225,8 +225,8 @@ impl CacheFilter {
 
         let mut hierarchy = HashMap::new();
         if let Some(metrics) = response.hierarchy() {
-            for (parent, childrens) in metrics.iter() {
-                hierarchy.insert(parent.clone(), childrens.clone());
+            for (parent, children) in metrics.iter() {
+                hierarchy.insert(parent.clone(), children.clone());
             }
         }
 
