@@ -46,6 +46,14 @@ enum AuthResponseError {
     NegativeTimeErr,
 }
 
+#[derive(Debug, thiserror::Error)]
+enum AuthResponseError {
+    #[error("failure to follow cache hit flow")]
+    CacheHitErr(#[from] CacheHitError),
+    #[error("conversion from i64 time to u64 duration failed")]
+    NegativeTimeErr,
+}
+
 pub struct CacheFilter {
     pub context_id: u32,
     pub config: FilterConfig,
