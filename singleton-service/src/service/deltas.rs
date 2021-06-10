@@ -9,7 +9,6 @@ pub struct AppDelta {
     pub usages: HashMap<String, u32>,
 }
 
-// getter and setter vs dot
 pub struct DeltaStore {
     pub last_update: Option<DateTime<Utc>>,
     pub deltas: HashMap<String, HashMap<String, AppDelta>>,
@@ -59,17 +58,6 @@ impl DeltaStore {
             Ok(DeltaStoreState::Ok)
         }
     }
-
-    /// Method to flush delta store to 3scale SM API.
-    // #[allow(dead_code)]
-    // pub fn flush_deltas(&mut self) -> bool {
-    //     for (service_key, apps) in self.deltas.drain() {
-    //         let report: Report = report(&service_key, &apps).unwrap();
-    //         let request = build_report_request(&report).unwrap();
-    //         dispatch_http_call(, headers: Vec<(&str, &str)>, body: Option<&[u8]>, trailers: Vec<(&str, &str)>, timeout: Duration)
-    //     }
-    //     true
-    // }
 
     fn get_app_delta<'a>(
         app_key: &'a str,
