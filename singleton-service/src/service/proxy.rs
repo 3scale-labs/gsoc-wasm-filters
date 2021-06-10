@@ -218,7 +218,9 @@ impl SingletonService {
 
     /// This is a helper method to send http requests. Both Report and Auth calls will use this method to
     /// send http requests after building relevant threescalers request type.
+    /// TODO : Handle http callout failure from proxy side.
     fn perform_http_call(&self, request: &Request) {
+        // TODO: read upstream from config when configuration parsing is re-implemented.
         let upstream = Upstream {
             name: "3scale-SM-API".to_string(),
             url: "https://su1.3scale.net".parse().unwrap(),
