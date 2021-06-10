@@ -257,7 +257,10 @@ impl Context for CacheFilter {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                     Ok(Authorization::Ok(response)) => {
                         if let Err(e) = self.handle_auth_response(&response) {
-                            warn!("ctxt {}: handling auth response failed: {:?}", self.context_id, e);
+                            warn!(
+                                "ctxt {}: handling auth response failed: {:?}",
+                                self.context_id, e
+                            );
                             request_process_failure(self, self)
                         }
                     }
