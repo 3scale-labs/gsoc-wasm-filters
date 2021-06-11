@@ -125,7 +125,7 @@ impl RootContext for SingletonService {
                         // TODO: Handle update failure
                         let threescale: ThreescaleData = message_received.data;
                         if message_received.update_cache_from_singleton {
-                            self.update_application_cache(&threescale);
+                            self.update_application_cache(&threescale).unwrap();
                         }
                         // TODO : Handle delta store update failure.
                         self.delta_store.update_delta_store(&threescale).unwrap();
@@ -279,7 +279,7 @@ impl SingletonService {
             let request = build_report_request(&report).unwrap();
             info!("report : {:?}", report);
             // TODO: Handle http local failure
-            self.perform_http_call(&request);
+            self.perform_http_call(&request).unwrap();
         }
     }
 }
