@@ -287,6 +287,7 @@ dependencies = [
  "serde 1.0.126",
  "serde-humanize-rs",
  "serde_json",
+ "thiserror",
  "threescale",
  "threescalers",
  "url",

@@ -2,6 +2,7 @@ pub use crate::configuration::service::ServiceConfig;
 pub use crate::service::deltas::DeltaStore;
 use crate::service::deltas::{AppDelta, DeltaStoreState};
 use crate::service::report::*;
+use anyhow::*;
 use log::{debug, info, warn};
 use proxy_wasm::{
     hostcalls::{dequeue_shared_queue, register_shared_queue},
@@ -11,6 +12,7 @@ use proxy_wasm::{
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
+use thiserror::Error;
 use threescale::upstream::*;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
@@ -21,6 +23,18 @@ use threescalers::http::Request;
 
 // QUEUE_NAME should be the same as the one in cache filter.
 const QUEUE_NAME: &str = "message_queue";
+
+#[derive(Error, Debug)]
+pub enum SingletonServiceError {
+    #[error("Updating metrics failed for application with application key: {0}")]
+    UpdateMetricsFailure(String),
+
+    #[error("Error retrieving local cache entry for cache key: {0}")]
+    GetCacheFailure(String),
+
+    #[error("Error settiing local cache entry for cache key: {0}")]
+    SetCacheFailure(String),
+}
 
 #[no_mangle]
 pub fn _start() {
@@ -40,7 +54,7 @@ pub fn _start() {
     });
 }
 
-pub struct SingletonService {
+struct SingletonService {
     context_id: u32,
     config: ServiceConfig,
     queue_id: Option<u32>,
@@ -187,24 +201,25 @@ impl Context for SingletonService {
 impl SingletonService {
     /// update_application_cache method updates the local application cache if the cache update
     /// fails from the cache filter for a particular request
-    fn update_application_cache(&self, threescale: &ThreescaleData) -> bool {
+    fn update_application_cache(&self, threescale: &ThreescaleData) -> Result<(), anyhow::Error> {
         let cache_key = format!("{}_{}", threescale.app_id, threescale.service_id);
         match get_application_from_cache(&cache_key) {
             Some((mut application, _)) => {
                 let is_updated: bool = update_metrics(threescale, &mut application);
                 if is_updated {
-                    set_application_to_cache(&cache_key, &application, false, None);
-                    // TODO: Handle when set_cache fail
-                    true
+                    if !set_application_to_cache(&cache_key, &application, false, None) {
+                        anyhow::bail!(SingletonServiceError::SetCacheFailure(cache_key.clone()))
+                    }
+                    Ok(())
                 } else {
-                    false
-                    // TODO: Handle when update_metrics fail
+                    anyhow::bail!(SingletonServiceError::UpdateMetricsFailure(
+                        threescale.app_id.clone()
+                    ))
                 }
             }
-            //TODO: Handle when no app in cache
             None => {
                 info!("No app in shared data");
-                false
+                anyhow::bail!(SingletonServiceError::GetCacheFailure(cache_key.clone()))
             }
         }
     }
@@ -219,7 +234,7 @@ impl SingletonService {
     /// This is a helper method to send http requests. Both Report and Auth calls will use this method to
     /// send http requests after building relevant threescalers request type.
     /// TODO : Handle http callout failure from proxy side.
-    fn perform_http_call(&self, request: &Request) {
+    fn perform_http_call(&self, request: &Request) -> Result<u32, anyhow::Error> {
         // TODO: read upstream from config when configuration parsing is re-implemented.
         let upstream = Upstream {
             name: "3scale-SM-API".to_string(),
@@ -232,7 +247,7 @@ impl SingletonService {
             .iter()
             .map(|(key, value)| (key.as_str(), value.as_str()))
             .collect::<Vec<_>>();
-        let call_token = match upstream.call(
+        let call_token = upstream.call(
             self,
             uri.as_ref(),
             request.method.as_str(),
@@ -240,13 +255,9 @@ impl SingletonService {
             body.map(str::as_bytes),
             None,
             None,
-        ) {
-            Ok(call_token) => call_token,
-            Err(e) => {
-                panic!("Error occured performing http call : {:?}", e)
-            }
-        };
-        info!("http call performed. call token : {}", call_token)
+        )?;
+        info!("http call performed. call token : {}", call_token);
+        Ok(call_token)
     }
 
     /// This method flush the deltas in the deltastore by making a clone and then
@@ -267,6 +278,7 @@ impl SingletonService {
             let report: Report = report(&key, &apps).unwrap();
             let request = build_report_request(&report).unwrap();
             info!("report : {:?}", report);
+            // TODO: Handle http local failure
             self.perform_http_call(&request);
         }
     }
