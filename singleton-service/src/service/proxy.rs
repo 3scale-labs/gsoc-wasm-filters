@@ -145,9 +145,9 @@ impl RootContext for SingletonService {
     fn on_tick(&mut self) {
         // This is just a demo of adding delta entries to delta store and flushing them.
         info!("onTick triggerd. starting test scenario....");
-        let metrics1: HashMap<String, u32> = [
-            ("hits".to_string(), 1_u32),
-            ("hits.79419".to_string(), 1_u32),
+        let metrics1: HashMap<String, u64> = [
+            ("hits".to_string(), 1_u64),
+            ("hits.79419".to_string(), 1_u64),
         ]
         .iter()
         .cloned()
@@ -159,9 +159,9 @@ impl RootContext for SingletonService {
                 .to_string(),
             metrics: RefCell::new(metrics1),
         };
-        let metrics2: HashMap<String, u32> = [
-            ("hits".to_string(), 1_u32),
-            ("hits.73545".to_string(), 1_u32),
+        let metrics2: HashMap<String, u64> = [
+            ("hits".to_string(), 1_u64),
+            ("hits.73545".to_string(), 1_u64),
         ]
         .iter()
         .cloned()

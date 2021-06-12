@@ -6,7 +6,7 @@ use threescale::structs::ThreescaleData;
 #[derive(Clone)]
 pub struct AppDelta {
     pub key_type: String,
-    pub usages: HashMap<String, u32>,
+    pub usages: HashMap<String, u64>,
 }
 
 pub struct DeltaStore {
