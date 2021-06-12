@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Period {
     Minute,
     Hour,
@@ -14,21 +14,35 @@ pub enum Period {
     Eternity,
 }
 
+impl Period {
+    pub fn as_secs(&self) -> u64 {
+        match *self {
+            Period::Minute => 60,
+            Period::Hour => 3600,
+            Period::Day => 86400,
+            Period::Week => 604800,
+            Period::Month => 2592000,
+            Period::Year => 31536000,
+            Period::Eternity => u64::MAX,
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize)]
 pub struct PeriodWindow {
     pub start: Duration,
     pub end: Duration,
-    pub window_type: Period,
+    pub window: Period,
 }
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize)]
 pub struct UsageReport {
     pub period_window: PeriodWindow,
-    pub left_hits: u32,
+    pub left_hits: u64,
     // Required to renew window untill new state is fetched from 3scale.
-    pub max_value: u32,
+    pub max_value: u64,
 }
 
 // Threescale's Application representation for cache
@@ -36,9 +50,8 @@ pub struct UsageReport {
 pub struct Application {
     pub app_id: String,
     pub service_id: String,
-    pub local_state: RefCell<HashMap<String, UsageReport>>,
-    pub metric_hierarchy: RefCell<HashMap<String, String>>,
-    pub unlimited_counter: RefCell<HashMap<String, u32>>,
+    pub local_state: HashMap<String, UsageReport>,
+    pub metric_hierarchy: HashMap<String, Vec<String>>,
 }
 
 // Request data recieved from previous filters
@@ -48,7 +61,7 @@ pub struct ThreescaleData {
     pub app_id: String,
     pub service_id: String,
     pub service_token: String,
-    pub metrics: RefCell<HashMap<String, u32>>,
+    pub metrics: RefCell<HashMap<String, u64>>,
 }
 
 impl Default for ThreescaleData {
