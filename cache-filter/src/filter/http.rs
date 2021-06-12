@@ -1,9 +1,6 @@
 use crate::{
     configuration::FilterConfig,
-    utils::{
-        do_auth_call, get_request_data, in_request_failure, period_from_response,
-        request_process_failure,
-    },
+    utils::{do_auth_call, in_request_failure, period_from_response, request_process_failure},
 };
 use log::{info, warn};
 use proxy_wasm::{
@@ -54,32 +51,41 @@ enum AuthResponseError {
     NegativeTimeErr,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum RequestDataError {
+    #[error("service_token not found inside request metadata")]
+    ServiceTokenNotFound,
+    #[error("service_id not found inside request metadata")]
+    ServiceIdNotFound,
+    #[error("usage data not found inside request metadata")]
+    UsageNotFound,
+    #[error("deserializing usage data failed")]
+    DeserializeFail(#[from] serde_json::Error),
+}
+
 pub struct CacheFilter {
     pub context_id: u32,
     pub config: FilterConfig,
     pub update_cache_from_singleton: bool,
-    pub cache_key: String,
+    pub cache_key: CacheKey,
     // This is required for cache miss case
     pub req_data: ThreescaleData,
 }
 
 impl HttpContext for CacheFilter {
     fn on_http_request_headers(&mut self, context_id: usize) -> Action {
-        let request_data = match get_request_data() {
-            Some(data) => data,
-            None => {
-                info!(
-                    "ctxt {}: Relevant request data not received from previous filter",
-                    context_id
-                );
+        let request_data = match self.get_request_data() {
+            Ok(data) => data,
+            Err(e) => {
+                info!("ctxt {}: fetching request data failed: {}", e, context_id);
                 // Send back local response for not providing relevant request data
                 self.send_http_response(401, vec![], None);
                 return Action::Pause;
             }
         };
 
-        self.cache_key = format!("{}_{}", request_data.app_id, request_data.service_id);
-        match get_application_from_cache(self.cache_key.as_str()) {
+        self.cache_key = CacheKey::from(&request_data.service_id, &request_data.app_id);
+        match get_application_from_cache(&self.cache_key.as_string()) {
             Some((app, _)) => {
                 info!("ctxt {}: Cache Hit", context_id);
 
@@ -95,9 +101,9 @@ impl HttpContext for CacheFilter {
             None => {
                 info!("ctxt {}: Cache Miss", context_id);
                 // TODO: Avoid multiple calls for same application
-                // Saving request data to use when there is response from 3scale
+                // saving request data to use when there is response from 3scale
                 self.req_data = request_data.clone();
-                // Fetching new application state using authorize endpoint
+                // fetching new application state using authorize endpoint
                 do_auth_call(self, self, &request_data)
             }
         }
@@ -113,7 +119,7 @@ impl CacheFilter {
                     .enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap()))
                     .is_err()
                 {
-                    info!(
+                    warn!(
                         "ctxt {}: Reporting to singleton failed: MQ with specified id not found",
                         self.context_id
                     );
@@ -121,7 +127,7 @@ impl CacheFilter {
                 }
             }
             None => {
-                info!(
+                warn!(
                     "ctxt {}: Reporting to singleton failed: Queue id not provided",
                     self.context_id
                 );
@@ -169,7 +175,7 @@ impl CacheFilter {
                     let num_windows = time_diff.as_secs() / period.window.as_secs();
                     let seconds_to_add = num_windows * period.window.as_secs();
 
-                    // get new window and reset left hits to max value
+                    // set to new period window
                     period.start = period
                         .start
                         .checked_add(Duration::from_secs(seconds_to_add))
@@ -180,6 +186,7 @@ impl CacheFilter {
                         .checked_add(Duration::from_secs(seconds_to_add))
                         .ok_or(RateLimitError::DurationOverflow)?;
 
+                    // reset left hits back to max value
                     usage_report.left_hits = usage_report.max_value;
 
                     if usage_report.left_hits < *hits {
@@ -189,7 +196,7 @@ impl CacheFilter {
                 }
             }
         }
-        if !set_application_to_cache(self.cache_key.as_str(), &app.borrow(), true, None) {
+        if !set_application_to_cache(&self.cache_key.as_string(), &app.borrow(), true, None) {
             self.update_cache_from_singleton = true;
         }
         Ok(false)
@@ -200,7 +207,6 @@ impl CacheFilter {
         response: &OkAuthorization,
     ) -> Result<(), AuthResponseError> {
         // Form application struct from the response
-        let key_split = self.cache_key.split('_').collect::<Vec<_>>();
         let mut state = HashMap::new();
         let UsageReports::UsageReports(reports) = response.usage_reports();
 
@@ -239,18 +245,49 @@ impl CacheFilter {
         }
 
         let app = Application {
-            app_id: key_split[0].to_string(),
-            service_id: key_split[1].to_string(),
+            app_id: self.cache_key.app_id().clone(),
+            service_id: self.cache_key.service_id().clone(),
             local_state: state,
             metric_hierarchy: hierarchy,
         };
 
-        set_application_to_cache(&self.cache_key, &app, true, None);
+        set_application_to_cache(&self.cache_key.as_string(), &app, true, None);
 
         match self.handle_cache_hit(&RefCell::new(app)) {
             Ok(()) => Ok(()),
             Err(e) => Err(AuthResponseError::CacheHitErr(e)),
         }
+    }
+
+    // Parse request data and return it back inside the struct
+    fn get_request_data(&self) -> Result<ThreescaleData, RequestDataError> {
+        // Note: Make changes here when data is fetched from metadata instead of request headers
+        let service_token = self
+            .get_http_request_header("x-3scale-service-token")
+            .ok_or(RequestDataError::ServiceTokenNotFound)?;
+
+        let service_id = self
+            .get_http_request_header("x-3scale-service-id")
+            .ok_or(RequestDataError::ServiceIdNotFound)?;
+
+        let usage_str = self
+            .get_http_request_header("x-3scale-usages")
+            .ok_or(RequestDataError::UsageNotFound)?;
+        let usages = serde_json::from_str::<std::collections::HashMap<String, u64>>(&usage_str)?;
+
+        let mut app_id: AppIdentifier = AppIdentifier::UserKey(UserKey::default());
+        if let Some(user_key) = self.get_http_request_header("x-3scale-user-key") {
+            app_id = AppIdentifier::UserKey(UserKey::from(user_key.as_ref()));
+        } else if let Some(app_id_key) = self.get_http_request_header("x-3scale-app-id") {
+            app_id = AppIdentifier::appid_from_str(&app_id_key);
+        }
+
+        Ok(ThreescaleData {
+            app_id,
+            service_id: ServiceId::from(service_id.as_ref()),
+            service_token: ServiceToken::from(service_token.as_ref()),
+            metrics: RefCell::new(usages),
+        })
     }
 }
 
