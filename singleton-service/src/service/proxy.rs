@@ -274,12 +274,21 @@ impl SingletonService {
     /// flush local cache. This will be called when delta store is full or when timer based cache flush is required.
     fn flush_local_cache(&mut self) {
         let deltas = self.flush_delta_store();
+        let mut auth_keys = HashMap::new();
         for (key, apps) in deltas {
             let report: Report = report(&key, &apps).unwrap();
             let request = build_report_request(&report).unwrap();
+            let app_keys = apps.keys().cloned().collect::<Vec<_>>();
+            auth_keys.insert(key, app_keys);
             info!("report : {:?}", report);
             // TODO: Handle http local failure
             self.perform_http_call(&request).unwrap();
         }
+        //deltas.clear()
+        self.update_local_cache(auth_keys);
+    }
+
+    fn update_local_cache(&self, auth_keys: HashMap<String, Vec<String>>) {
+
     }
 }
