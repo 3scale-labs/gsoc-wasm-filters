@@ -25,9 +25,9 @@ const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
 
 #[derive(Debug, Clone, thiserror::Error)]
-enum RateLimitedError {
+enum RateLimitError {
     #[error("overflow due to two duration addition")]
-    DurOverflowErr,
+    DurationOverflow,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -35,7 +35,7 @@ enum CacheHitError {
     #[error("duration since time later than self")]
     TimeConversionErr(#[from] std::time::SystemTimeError),
     #[error("failure of is_rate_limited error")]
-    RateLimitErr(#[from] RateLimitedError),
+    RateLimitErr(#[from] RateLimitError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -61,7 +61,7 @@ impl HttpContext for CacheFilter {
             Some(data) => data,
             None => {
                 info!(
-                    "ctxt {}: Releveant request data not recieved from previous filter",
+                    "ctxt {}: Relevant request data not received from previous filter",
                     context_id
                 );
                 // Send back local response for not providing relevant request data
@@ -148,7 +148,7 @@ impl CacheFilter {
         &mut self,
         app: &RefCell<Application>,
         current_time: &Duration,
-    ) -> Result<bool, RateLimitedError> {
+    ) -> Result<bool, RateLimitError> {
         for (metric, hits) in self.req_data.metrics.borrow().iter() {
             if let Some(usage_report) = app.borrow_mut().local_state.get_mut(metric) {
                 let mut period = &mut usage_report.period_window;
@@ -157,7 +157,7 @@ impl CacheFilter {
                     // taking care of period window expiration
                     let time_diff = current_time
                         .checked_sub(period.start)
-                        .ok_or(RateLimitedError::DurOverflowErr)?;
+                        .ok_or(RateLimitError::DurationOverflow)?;
                     let num_windows = time_diff.as_secs() / period.window.as_secs();
                     let seconds_to_add = num_windows * period.window.as_secs();
 
@@ -165,12 +165,12 @@ impl CacheFilter {
                     period.start = period
                         .start
                         .checked_add(Duration::from_secs(seconds_to_add))
-                        .ok_or(RateLimitedError::DurOverflowErr)?;
+                        .ok_or(RateLimitError::DurationOverflow)?;
 
                     period.end = period
                         .end
                         .checked_add(Duration::from_secs(seconds_to_add))
-                        .ok_or(RateLimitedError::DurOverflowErr)?;
+                        .ok_or(RateLimitError::DurationOverflow)?;
 
                     usage_report.left_hits = usage_report.max_value;
 
@@ -249,7 +249,7 @@ impl CacheFilter {
 impl Context for CacheFilter {
     fn on_http_call_response(&mut self, token_id: u32, _: usize, body_size: usize, _: usize) {
         info!(
-            "ctxt {}: recieved response from 3scale: token: {}",
+            "ctxt {}: received response from 3scale: token: {}",
             self.context_id, token_id
         );
         match self.get_http_call_response_body(0, body_size) {
