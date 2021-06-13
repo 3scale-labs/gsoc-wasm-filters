@@ -29,25 +29,34 @@ impl DeltaStore {
         &mut self,
         threescale: &ThreescaleData,
     ) -> Result<DeltaStoreState, anyhow::Error> {
-        match self.get_service(&threescale.service_id, &threescale.service_token) {
-            Some(service) => match DeltaStore::get_app_delta(&threescale.app_id, service) {
-                Some(app) => {
-                    DeltaStore::update_app_delta(app, threescale);
+        match self.get_service(
+            threescale.service_id.as_ref(),
+            threescale.service_token.as_ref(),
+        ) {
+            Some(service) => {
+                match DeltaStore::get_app_delta(&threescale.app_id.as_string(), service) {
+                    Some(app) => {
+                        DeltaStore::update_app_delta(app, threescale);
+                    }
+                    None => {
+                        DeltaStore::add_app_delta(service, threescale);
+                    }
                 }
-                None => {
-                    DeltaStore::add_app_delta(service, threescale);
-                }
-            },
+            }
             None => {
                 let mut usages: HashMap<String, AppDelta> = HashMap::new();
                 usages.insert(
-                    threescale.app_id.clone(),
+                    threescale.app_id.as_string(),
                     AppDelta {
                         key_type: "user_key".to_string(),
                         usages: threescale.metrics.borrow().clone(),
                     },
                 );
-                let delta_key = format!("{}_{}", threescale.service_id, threescale.service_token);
+                let delta_key = format!(
+                    "{}_{}",
+                    threescale.service_id.as_ref(),
+                    threescale.service_token.as_ref()
+                );
                 self.deltas.insert(delta_key, usages);
             }
         }
@@ -88,7 +97,7 @@ impl DeltaStore {
 
     fn add_app_delta(service: &mut HashMap<String, AppDelta>, threescale: &ThreescaleData) -> bool {
         service.insert(
-            threescale.app_id.clone(),
+            threescale.app_id.as_string(),
             AppDelta {
                 key_type: "user_key".to_string(),
                 usages: threescale.metrics.borrow().clone(),
