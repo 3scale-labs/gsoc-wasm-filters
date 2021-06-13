@@ -52,7 +52,7 @@ pub fn do_auth_call<C: proxy_wasm::traits::HttpContext>(
 
     let extensions =
         threescalers::extensions::List::new().push(threescalers::extensions::Extension::Hierarchy);
-    
+
     let mut apicall = threescalers::api_call::ApiCall::builder(&service);
     let apicall = match apicall
         .transactions(&txn)
