@@ -1,4 +1,5 @@
 pub use crate::configuration::service::ServiceConfig;
+use crate::service::auth::*;
 pub use crate::service::deltas::DeltaStore;
 use crate::service::deltas::{AppDelta, DeltaStoreState};
 use crate::service::report::*;
@@ -191,10 +192,17 @@ impl Context for SingletonService {
         &mut self,
         token_id: u32,
         _num_headers: usize,
-        _body_size: usize,
+        body_size: usize,
         _num_trailers: usize,
     ) {
         info!("3scale SM API response for call token :{}", token_id);
+        match self.get_http_call_response_body(0, body_size) {
+            Some(bytes) => {
+                info!("Auth response >>>>>>>>>>>>>>>>>>>>>")
+            },
+            None => info!("Report response") 
+        }
+
     }
 }
 
@@ -289,6 +297,24 @@ impl SingletonService {
     }
 
     fn update_local_cache(&self, auth_keys: HashMap<String, Vec<String>>) {
-
+        for (service, apps) in auth_keys {
+            // let keys = service.split('_').collect::<Vec<_>>();
+            // let auth_data = apps
+            //     .iter()
+            //     .map(|app_key| Auth {
+            //         service_id: keys[0].to_string(),
+            //         service_token: keys[1].to_string(),
+            //         app_id: app_key.to_string(),
+            //     })
+            //     .collect::<Vec<_>>();
+            let auth_data: Vec<Auth> = auth_apps(service, apps);
+            let auth_requests: Vec<Request> = auth_data
+                .iter()
+                .map(|app| build_auth_request(app).unwrap())
+                .collect::<Vec<_>>();
+            auth_requests.iter().for_each(|request| {
+                self.perform_http_call(request);
+            })
+        }
     }
 }

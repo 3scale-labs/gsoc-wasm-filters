@@ -1,19 +1,19 @@
-use std::collections::HashMap;
 use log::debug;
+use std::collections::HashMap;
 use threescalers::{
     api_call::{ApiCall, Kind},
     application::Application,
+    credentials::*,
     extensions::{self},
     http::Request,
-    credentials::*,
     service::Service,
     transaction::Transaction,
 };
 
 pub struct Auth {
-    service_id: String,
-    service_token: String,
-    app_id: String,
+    pub service_id: String,
+    pub service_token: String,
+    pub app_id: String,
 }
 
 impl Auth {
