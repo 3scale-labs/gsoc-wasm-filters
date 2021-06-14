@@ -1,3 +1,4 @@
+use log::debug;
 use std::collections::HashMap;
 use std::vec;
 use threescale::structs::AppIdentifier;
@@ -17,7 +18,7 @@ use threescalers::{
 pub struct Report {
     service_id: String,
     service_token: String,
-    usages: HashMap<String, Vec<(String, String)>>,
+    usages: HashMap<AppIdentifier, Vec<(String, String)>>,
 }
 
 impl Report {
@@ -29,7 +30,7 @@ impl Report {
         self.service_token.as_str()
     }
 
-    pub fn usages(&self) -> &HashMap<String, Vec<(String, String)>> {
+    pub fn usages(&self) -> &HashMap<AppIdentifier, Vec<(String, String)>> {
         &self.usages
     }
 }
@@ -42,14 +43,14 @@ pub fn report<'a>(
     apps: &'a HashMap<AppIdentifier, HashMap<String, u64>>,
 ) -> Result<Report, anyhow::Error> {
     let keys = key.split('_').collect::<Vec<_>>();
-    let mut usages_map: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let mut usages_map: HashMap<AppIdentifier, Vec<(String, String)>> = HashMap::new();
     for app in apps {
         let (app_id, app_deltas): (&AppIdentifier, &HashMap<String, u64>) = app;
         let usage = app_deltas
             .iter()
             .map(|(m, v)| (m.to_string(), v.to_string()))
             .collect::<Vec<(String, String)>>();
-        usages_map.insert(app_id.as_string(), usage);
+        usages_map.insert(app_id.clone(), usage);
     }
     Ok(Report {
         service_id: keys[0].to_string(),
@@ -63,10 +64,26 @@ pub fn build_report_request(report: &Report) -> Result<Request, anyhow::Error> {
     let creds = Credentials::ServiceToken(ServiceToken::from(report.service_token()));
     let svc = Service::new(report.service_id(), creds);
     let mut app_usage = vec![];
-    for (user_key, usage) in report.usages().iter() {
-        let application = Application::from(UserKey::from(user_key.as_str()));
+    for (app_id, usage) in report.usages().iter() {
+        let app;
+        match app_id {
+            AppIdentifier::UserKey(_user_key) => {
+                debug!("AppIdentifier UserKey: {}", app_id.as_string());
+                app = Application::from_user_key(app_id.as_string())
+            }
+            AppIdentifier::AppId(_app_id, None) => {
+                debug!("AppIdentifier AppId : {}", app_id.as_string());
+                app = Application::from_app_id(app_id.as_string())
+            }
+            AppIdentifier::AppId(_app_id, _app_key) => {
+                let app_key = app_id.as_string();
+                debug!("AppIdentifier AppId+AppKey : {}", app_key);
+                let keys = app_key.split('_').collect::<Vec<_>>();
+                app = Application::from_app_id_and_key(keys[0], keys[1])
+            }
+        }
         let usage = Usage::new(usage);
-        app_usage.push((application, usage))
+        app_usage.push((app, usage))
     }
     let txns = app_usage
         .iter()
