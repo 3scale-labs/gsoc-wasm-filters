@@ -17,7 +17,7 @@ use thiserror::Error;
 use threescale::upstream::*;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
-    structs::{Message, ThreescaleData},
+    structs::{AppIdentifier, CacheKey, Message, ServiceId, ServiceToken, ThreescaleData, UserKey},
     utils::update_metrics,
 };
 use threescalers::http::Request;
@@ -154,10 +154,11 @@ impl RootContext for SingletonService {
         .cloned()
         .collect();
         let threescale1 = ThreescaleData {
-            app_id: "46de54605a1321aa3838480c5fa91bcc".to_string(),
-            service_id: "2555417902188".to_string(),
-            service_token: "6705c7d02e9a899d4db405dc1413361611e4250dfd12ec3dcbcea8c3de7cdd29"
-                .to_string(),
+            app_id: AppIdentifier::UserKey(UserKey::from("46de54605a1321aa3838480c5fa91bcc")),
+            service_id: ServiceId::from("2555417902188"),
+            service_token: ServiceToken::from(
+                "6705c7d02e9a899d4db405dc1413361611e4250dfd12ec3dcbcea8c3de7cdd29",
+            ),
             metrics: RefCell::new(metrics1),
         };
         let metrics2: HashMap<String, u64> = [
@@ -168,10 +169,11 @@ impl RootContext for SingletonService {
         .cloned()
         .collect();
         let threescale2 = ThreescaleData {
-            app_id: "de90b3d58dc5449572d2fdb7ae0af61a".to_string(),
-            service_id: "2555417889374".to_string(),
-            service_token: "e1abc8f29e6ba7dfed3fcc9c5399be41f7a881f85fa11df68b93a5d800c3c07a"
-                .to_string(),
+            app_id: AppIdentifier::UserKey(UserKey::from("de90b3d58dc5449572d2fdb7ae0af61a")),
+            service_id: ServiceId::from("2555417889374"),
+            service_token: ServiceToken::from(
+                "e1abc8f29e6ba7dfed3fcc9c5399be41f7a881f85fa11df68b93a5d800c3c07a",
+            ),
             metrics: RefCell::new(metrics2),
         };
         let state1 = self.delta_store.update_delta_store(&threescale1).unwrap();
@@ -210,24 +212,29 @@ impl SingletonService {
     /// update_application_cache method updates the local application cache if the cache update
     /// fails from the cache filter for a particular request
     fn update_application_cache(&self, threescale: &ThreescaleData) -> Result<(), anyhow::Error> {
-        let cache_key = format!("{}_{}", threescale.app_id, threescale.service_id);
-        match get_application_from_cache(&cache_key) {
+        let cache_key = CacheKey::from(&threescale.service_id, &threescale.app_id);
+        match get_application_from_cache(&cache_key.as_string()) {
             Some((mut application, _)) => {
                 let is_updated: bool = update_metrics(threescale, &mut application);
                 if is_updated {
-                    if !set_application_to_cache(&cache_key, &application, false, None) {
-                        anyhow::bail!(SingletonServiceError::SetCacheFailure(cache_key.clone()))
+                    if !set_application_to_cache(&cache_key.as_string(), &application, false, None)
+                    {
+                        anyhow::bail!(SingletonServiceError::SetCacheFailure(
+                            cache_key.as_string()
+                        ))
                     }
                     Ok(())
                 } else {
                     anyhow::bail!(SingletonServiceError::UpdateMetricsFailure(
-                        threescale.app_id.clone()
+                        threescale.app_id.as_string()
                     ))
                 }
             }
             None => {
                 info!("No app in shared data");
-                anyhow::bail!(SingletonServiceError::GetCacheFailure(cache_key.clone()))
+                anyhow::bail!(SingletonServiceError::GetCacheFailure(
+                    cache_key.as_string()
+                ))
             }
         }
     }
