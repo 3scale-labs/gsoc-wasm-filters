@@ -5,7 +5,7 @@ use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
     types::{ContextType, LogLevel},
 };
-use threescale::structs::ThreescaleData;
+use threescale::structs::{CacheKey, ThreescaleData};
 
 #[no_mangle]
 pub fn _start() {
@@ -58,7 +58,7 @@ impl RootContext for CacheFilterRoot {
             context_id: context,
             config: self.config.clone(),
             update_cache_from_singleton: false,
-            cache_key: String::new(),
+            cache_key: CacheKey::default(),
             req_data: ThreescaleData::default(),
         }))
     }
