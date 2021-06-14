@@ -1,7 +1,6 @@
-pub use crate::configuration::service::ServiceConfig;
+use crate::configuration::service::ServiceConfig;
 use crate::service::auth::*;
-pub use crate::service::deltas::DeltaStore;
-use crate::service::deltas::{AppDelta, DeltaStoreState};
+use crate::service::deltas::{DeltaStore, DeltaStoreState};
 use crate::service::report::*;
 use anyhow::*;
 use log::{debug, info, warn};
@@ -12,15 +11,17 @@ use proxy_wasm::{
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::time::Duration;
 use thiserror::Error;
-use threescale::upstream::*;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::{AppIdentifier, CacheKey, Message, ServiceId, ServiceToken, ThreescaleData, UserKey},
+    upstream::*,
     utils::update_metrics,
 };
 use threescalers::http::Request;
+use threescalers::response::Authorization;
 
 // QUEUE_NAME should be the same as the one in cache filter.
 const QUEUE_NAME: &str = "message_queue";
@@ -63,7 +64,7 @@ struct SingletonService {
 }
 
 impl RootContext for SingletonService {
-    /// Message queue will get registered when on_vm_start callback gets called.
+    // Message queue will get registered when on_vm_start callback gets called.
     fn on_vm_start(&mut self, _vm_configuration_size: usize) -> bool {
         if let Ok(q_id) = register_shared_queue(QUEUE_NAME) {
             self.queue_id = Some(q_id);
@@ -136,7 +137,10 @@ impl RootContext for SingletonService {
                     }
                 }
             }
-            Err(error) => info!("Error consuming message from the shared queue: {:?}", error),
+            Err(error) => info!(
+                "Error consuming message from the message queue: {:?}",
+                error
+            ),
         }
     }
 
@@ -198,19 +202,28 @@ impl Context for SingletonService {
         _num_trailers: usize,
     ) {
         info!("3scale SM API response for call token :{}", token_id);
+        let headers = self.get_http_call_response_headers();
+        let status = headers
+            .iter()
+            .find(|(key, _)| key.as_str() == ":status")
+            .map(|(_, value)| value)
+            .unwrap();
         match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => {
-                info!("Auth response >>>>>>>>>>>>>>>>>>>>>")
-            },
-            None => info!("Report response") 
+                info!("Auth response");
+                self.handle_auth_response(bytes, &status);
+            }
+            None => {
+                info!("Report response");
+                self.handle_report_response(&status);
+            }
         }
-
     }
 }
 
 impl SingletonService {
     /// update_application_cache method updates the local application cache if the cache update
-    /// fails from the cache filter for a particular request
+    /// fails from the cache filter for a particular request.
     fn update_application_cache(&self, threescale: &ThreescaleData) -> Result<(), anyhow::Error> {
         let cache_key = CacheKey::from(&threescale.service_id, &threescale.app_id);
         match get_application_from_cache(&cache_key.as_string()) {
@@ -277,7 +290,9 @@ impl SingletonService {
 
     /// This method flush the deltas in the deltastore by making a clone and then
     /// by emptying the deltastore hashmap.  
-    fn flush_delta_store(&mut self) -> HashMap<String, HashMap<String, AppDelta>> {
+    fn flush_delta_store(
+        &mut self,
+    ) -> HashMap<String, HashMap<AppIdentifier, HashMap<String, u64>>> {
         let deltas_cloned = self.delta_store.deltas.clone();
         self.delta_store.deltas.clear();
         assert!(self.delta_store.deltas.is_empty());
@@ -297,31 +312,55 @@ impl SingletonService {
             auth_keys.insert(key, app_keys);
             info!("report : {:?}", report);
             // TODO: Handle http local failure
-            self.perform_http_call(&request).unwrap();
+            #[allow(unused_must_use)]
+            {
+                self.perform_http_call(&request);
+            }
         }
-        //deltas.clear()
         self.update_local_cache(auth_keys);
     }
 
-    fn update_local_cache(&self, auth_keys: HashMap<String, Vec<String>>) {
+    /// Update the local cache by sending authorize requests to 3scale SM API.
+    /// TODO : Remove function arguments and read services and apps from hashmap
+    /// stored in the singleton service after cache filter integration.
+    fn update_local_cache(&self, auth_keys: HashMap<String, Vec<AppIdentifier>>) {
         for (service, apps) in auth_keys {
-            // let keys = service.split('_').collect::<Vec<_>>();
-            // let auth_data = apps
-            //     .iter()
-            //     .map(|app_key| Auth {
-            //         service_id: keys[0].to_string(),
-            //         service_token: keys[1].to_string(),
-            //         app_id: app_key.to_string(),
-            //     })
-            //     .collect::<Vec<_>>();
             let auth_data: Vec<Auth> = auth_apps(service, apps);
             let auth_requests: Vec<Request> = auth_data
                 .iter()
                 .map(|app| build_auth_request(app).unwrap())
                 .collect::<Vec<_>>();
             auth_requests.iter().for_each(|request| {
-                self.perform_http_call(request);
+                #[allow(unused_must_use)]
+                {
+                    // TODO : Handle local failure.
+                    self.perform_http_call(request);
+                }
             })
         }
+    }
+
+    /// Handle Authorize response received from the 3scale SM API. Depending on the response,
+    /// several operations will be performed like cache update.
+    fn handle_auth_response(&self, response: Vec<u8>, _status: &str) {
+        // TODO : Handle cache update after enabling list keys extension for both 200 and 409.
+        match Authorization::from_str(std::str::from_utf8(&response).unwrap()) {
+            Ok(Authorization::Ok(data)) => {
+                info!("auth response : {:?}", data)
+            }
+            Ok(Authorization::Denied(data)) => {
+                info!("auth denied response: {:?}", data)
+            }
+            Err(e) => {
+                info!("error processing auth response: {:?}", e)
+            }
+        }
+    }
+
+    /// Handle Report response received from the 3scale SM API. Depending on the response received
+    /// several operations will take place.
+    fn handle_report_response(&self, status: &str) {
+        // TODO : Handle report failure by storing the data in shared data.
+        info!("Report status : {}", status);
     }
 }

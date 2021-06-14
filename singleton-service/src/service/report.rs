@@ -1,6 +1,6 @@
-use crate::service::deltas::AppDelta;
 use std::collections::HashMap;
 use std::vec;
+use threescale::structs::AppIdentifier;
 use threescalers::{
     api_call::{ApiCall, Kind},
     application::*,
@@ -12,6 +12,7 @@ use threescalers::{
     usage::Usage,
 };
 
+/// Proxy level representation of the report data for a single service.
 #[derive(Debug)]
 pub struct Report {
     service_id: String,
@@ -19,7 +20,6 @@ pub struct Report {
     usages: HashMap<String, Vec<(String, String)>>,
 }
 
-/// Proxy level representation of the report data for a single service.
 impl Report {
     pub fn service_id(&self) -> &str {
         self.service_id.as_str()
@@ -39,18 +39,17 @@ impl Report {
 /// which is of threescalers Report request type.
 pub fn report<'a>(
     key: &'a str,
-    apps: &'a HashMap<String, AppDelta>,
+    apps: &'a HashMap<AppIdentifier, HashMap<String, u64>>,
 ) -> Result<Report, anyhow::Error> {
     let keys = key.split('_').collect::<Vec<_>>();
     let mut usages_map: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for app in apps {
-        let (app_id, app_deltas): (&String, &AppDelta) = app;
+        let (app_id, app_deltas): (&AppIdentifier, &HashMap<String, u64>) = app;
         let usage = app_deltas
-            .usages
             .iter()
             .map(|(m, v)| (m.to_string(), v.to_string()))
             .collect::<Vec<(String, String)>>();
-        usages_map.insert(app_id.to_string(), usage);
+        usages_map.insert(app_id.as_string(), usage);
     }
     Ok(Report {
         service_id: keys[0].to_string(),
