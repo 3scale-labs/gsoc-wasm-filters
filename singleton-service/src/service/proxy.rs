@@ -383,11 +383,11 @@ impl SingletonService {
     fn handle_auth_response(&self, response: Vec<u8>, _status: &str) {
         // TODO : Handle cache update after enabling list keys extension for both 200 and 409.
         match Authorization::from_str(std::str::from_utf8(&response).unwrap()) {
-            Ok(Authorization::Ok(data)) => {
+            Ok(Authorization::Status(data)) => {
                 info!("auth response : {:?}", data)
             }
-            Ok(Authorization::Denied(data)) => {
-                info!("auth denied response: {:?}", data)
+            Ok(Authorization::Error(error)) => {
+                info!("auth denied response: {:?}", error)
             }
             Err(e) => {
                 info!("error processing auth response: {:?}", e)

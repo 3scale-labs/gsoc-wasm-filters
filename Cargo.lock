@@ -8,9 +8,9 @@ checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
 
 [[package]]
 name = "anyhow"
-version = "1.0.40"
+version = "1.0.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28b2cd92db5cbd74e8e5028f7e27dd7aa3090e89e4f2a197cc7c8dfb69c7063b"
+checksum = "15af2628f6890fe2609a3b91bef4c83450512802e59489f9c1cb1fa5df064a61"
 
 [[package]]
 name = "autocfg"
@@ -45,7 +45,7 @@ dependencies = [
  "serde_xml",
  "thiserror",
  "threescale",
- "threescalers 0.7.0 (git+https://github.com/rahulanand16nov/threescalers)",
+ "threescalers",
 ]
 
 [[package]]
@@ -109,9 +109,9 @@ checksum = "dd25036021b0de88a0aff6b850051563c6516d0bf53f8638938edbb9de732736"
 
 [[package]]
 name = "libc"
-version = "0.2.96"
+version = "0.2.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5600b4e6efc5421841a2138a6b082e07fe12f9aaa12783d50e5d13325b26b4fc"
+checksum = "12b8adadd720df158f4d70dfe7ccc6adb0472d7c55ca83445f6a5ab3e36f8fb6"
 
 [[package]]
 name = "log"
@@ -290,7 +290,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "threescale",
- "threescalers 0.7.0 (git+https://github.com/3scale-rs/threescalers)",
+ "threescalers",
  "url",
 ]
 
@@ -340,21 +340,7 @@ dependencies = [
 [[package]]
 name = "threescalers"
 version = "0.7.0"
-source = "git+https://github.com/3scale-rs/threescalers?branch=master#c7fb31a2bf064da06197caa7830576b9d80ca3d2"
-dependencies = [
- "anyhow",
- "autocfg 1.0.1 (git+https://github.com/unleashed/autocfg?branch=probe_feature)",
- "chrono",
- "no-std-compat",
- "percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde 1.0.126",
- "serde-xml-rs",
-]
-
-[[package]]
-name = "threescalers"
-version = "0.7.0"
-source = "git+https://github.com/rahulanand16nov/threescalers?branch=master#2d53e4879dbedbe0767e7bfcaa9805b3ca7d9c5a"
+source = "git+https://github.com/rahulanand16nov/threescalers?branch=master#df24107d9d4edd9d81f0240b5516140051453f5f"
 dependencies = [
  "anyhow",
  "autocfg 1.0.1 (git+https://github.com/unleashed/autocfg?branch=probe_feature)",

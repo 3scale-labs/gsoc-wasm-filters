@@ -16,7 +16,7 @@ use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::*,
 };
-use threescalers::response::{Authorization, OkAuthorization, UsageReports};
+use threescalers::response::{Authorization, AuthorizationStatus, UsageReports};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
@@ -41,6 +41,8 @@ enum AuthResponseError {
     CacheHitErr(#[from] CacheHitError),
     #[error("conversion from i64 time to u64 duration failed")]
     NegativeTimeErr,
+    #[error("usage reports from 3scale auth response are missing")]
+    UsageNotFound,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -181,6 +183,7 @@ impl CacheFilter {
                     // reset left hits back to max value
                     usage_report.left_hits = usage_report.max_value;
 
+                    // TODO : Use the update_metric()
                     if usage_report.left_hits < *hits {
                         return Ok(true);
                     }
@@ -196,11 +199,13 @@ impl CacheFilter {
 
     fn handle_auth_response(
         &mut self,
-        response: &OkAuthorization,
+        response: &AuthorizationStatus,
     ) -> Result<(), AuthResponseError> {
         // Form application struct from the response
         let mut state = HashMap::new();
-        let UsageReports::UsageReports(reports) = response.usage_reports();
+        let UsageReports::UsageReports(reports) = response
+            .usage_reports()
+            .ok_or(AuthResponseError::UsageNotFound)?;
 
         for usage in reports {
             state.insert(
@@ -292,7 +297,7 @@ impl Context for CacheFilter {
         match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
-                    Ok(Authorization::Ok(response)) => {
+                    Ok(Authorization::Status(response)) => {
                         if let Err(e) = self.handle_auth_response(&response) {
                             warn!(
                                 "ctxt {}: handling auth response failed: {:?}",
@@ -301,7 +306,7 @@ impl Context for CacheFilter {
                             request_process_failure(self, self)
                         }
                     }
-                    Ok(Authorization::Denied(denied_auth)) => {
+                    Ok(Authorization::Error(denied_auth)) => {
                         info!("authorization was denied with code: {}", denied_auth.code());
                         request_process_failure(self, self);
                         return;
