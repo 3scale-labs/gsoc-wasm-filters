@@ -22,7 +22,7 @@ serde-humanize-rs = "0.1"
 proxy-wasm = "0.1"
 bincode = "1.0"
 chrono = "0.4.19"
-threescalers = { git = "https://github.com/rahulanand16nov/threescalers", branch = "master" }
+threescalers = { git = "https://github.com/3scale-rs/threescalers", branch = "master" }
 anyhow = "1.0"
 url = { git = "https://github.com/3scale-rs/rust-url", branch = "3scale", features = ["serde"] }
 thiserror = "1.0"

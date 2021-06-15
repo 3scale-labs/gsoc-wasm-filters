@@ -340,7 +340,7 @@ dependencies = [
 [[package]]
 name = "threescalers"
 version = "0.7.0"
-source = "git+https://github.com/rahulanand16nov/threescalers?branch=master#df24107d9d4edd9d81f0240b5516140051453f5f"
+source = "git+https://github.com/3scale-rs/threescalers?branch=master#64e6df340c688fffc1f7f7c3c49071842ac1b175"
 dependencies = [
  "anyhow",
  "autocfg 1.0.1 (git+https://github.com/unleashed/autocfg?branch=probe_feature)",
