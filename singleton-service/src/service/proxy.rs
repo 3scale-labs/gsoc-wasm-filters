@@ -158,10 +158,29 @@ impl RootContext for SingletonService {
         .cloned()
         .collect();
         let threescale1 = ThreescaleData {
-            app_id: AppIdentifier::UserKey(UserKey::from("46de54605a1321aa3838480c5fa91bcc")),
-            service_id: ServiceId::from("2555417902188"),
+            app_id: AppIdentifier::UserKey(UserKey::from(
+                self.config
+                    .test_config
+                    .clone()
+                    .unwrap()
+                    .application_1
+                    .as_str(),
+            )),
+            service_id: ServiceId::from(
+                self.config
+                    .test_config
+                    .clone()
+                    .unwrap()
+                    .service_id_1
+                    .as_str(),
+            ),
             service_token: ServiceToken::from(
-                "6705c7d02e9a899d4db405dc1413361611e4250dfd12ec3dcbcea8c3de7cdd29",
+                self.config
+                    .test_config
+                    .clone()
+                    .unwrap()
+                    .service_token_1
+                    .as_str(),
             ),
             metrics: RefCell::new(metrics1),
         };
@@ -173,10 +192,29 @@ impl RootContext for SingletonService {
         .cloned()
         .collect();
         let threescale2 = ThreescaleData {
-            app_id: AppIdentifier::UserKey(UserKey::from("de90b3d58dc5449572d2fdb7ae0af61a")),
-            service_id: ServiceId::from("2555417889374"),
+            app_id: AppIdentifier::UserKey(UserKey::from(
+                self.config
+                    .test_config
+                    .clone()
+                    .unwrap()
+                    .application_2
+                    .as_str(),
+            )),
+            service_id: ServiceId::from(
+                self.config
+                    .test_config
+                    .clone()
+                    .unwrap()
+                    .service_id_2
+                    .as_str(),
+            ),
             service_token: ServiceToken::from(
-                "e1abc8f29e6ba7dfed3fcc9c5399be41f7a881f85fa11df68b93a5d800c3c07a",
+                self.config
+                    .test_config
+                    .clone()
+                    .unwrap()
+                    .service_token_2
+                    .as_str(),
             ),
             metrics: RefCell::new(metrics2),
         };
