@@ -1,42 +1,32 @@
+use crate::configuration::delta::DeltaStoreConfig;
+use crate::configuration::test::TestConfiguration;
 use serde::Deserialize;
 use std::time::Duration;
+use threescale::upstream::Upstream;
 
 #[derive(Deserialize, Debug)]
 #[serde(default)]
 pub struct ServiceConfig {
-    /// Threescale cluster name that indicates threescale backend that includes SM API. Should provide the cluster
-    /// name of the threescale cluster in the envoy.yaml file.
-    threescale_cluster: String,
+    /// Upstream configuration.
+    pub upstream_config: Upstream,
 
-    /// Authroize call timeout.
-    #[serde(with = "serde_humanize_rs")]
-    threescale_auth_timeout: Duration,
+    /// Delta store configuration.
+    pub delta_store_config: DeltaStoreConfig,
 
-    /// Size of the local cache container.
-    local_cache_container_size: i32,
-
-    /// Minimum tick period for the periodical cache update in case of low traffic.
-    #[serde(with = "serde_humanize_rs")]
-    minimum_tick: Duration,
-
-    /// Maximum tick period for the periodical cache update in case of low traffic.
-    #[serde(with = "serde_humanize_rs")]
-    maximum_tick: Duration,
-
-    /// Retry duration in case threescale backend gets offline.
-    #[serde(with = "serde_humanize_rs")]
-    retry_duration: Duration,
+    /// Temporary test configuration.
+    pub test_config: Option<TestConfiguration>,
 }
 
 impl Default for ServiceConfig {
     fn default() -> Self {
         ServiceConfig {
-            threescale_cluster: "threescale_SM_API".to_owned(),
-            threescale_auth_timeout: Duration::from_secs(5),
-            local_cache_container_size: 100,
-            minimum_tick: Duration::from_secs(5),
-            maximum_tick: Duration::from_secs(60),
-            retry_duration: Duration::from_secs(20),
+            upstream_config: Upstream {
+                name: "outbound|443||su1.3scale.net".to_owned(),
+                url: "https://su1.3scale.net".parse().unwrap(),
+                timeout: Duration::from_millis(5000),
+            },
+            delta_store_config: DeltaStoreConfig::default(),
+            test_config: None,
         }
     }
 }

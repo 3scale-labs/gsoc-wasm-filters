@@ -46,13 +46,13 @@ pub struct UsageReport {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct AppId(String);
 #[repr(transparent)]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct AppKey(String);
 #[repr(transparent)]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct UserKey(String);
 
 impl AsRef<str> for AppId {
@@ -153,7 +153,7 @@ impl<'a> CacheKey {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum AppIdentifier {
     AppId(AppId, Option<AppKey>),
     UserKey(UserKey),

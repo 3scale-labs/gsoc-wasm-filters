@@ -1,6 +1,7 @@
-use crate::service::deltas::AppDelta;
+use log::debug;
 use std::collections::HashMap;
 use std::vec;
+use threescale::structs::AppIdentifier;
 use threescalers::{
     api_call::{ApiCall, Kind},
     application::*,
@@ -12,14 +13,14 @@ use threescalers::{
     usage::Usage,
 };
 
+/// Proxy level representation of the report data for a single service.
 #[derive(Debug)]
 pub struct Report {
     service_id: String,
     service_token: String,
-    usages: HashMap<String, Vec<(String, String)>>,
+    usages: HashMap<AppIdentifier, Vec<(String, String)>>,
 }
 
-/// Proxy level representation of the report data for a single service.
 impl Report {
     pub fn service_id(&self) -> &str {
         self.service_id.as_str()
@@ -29,7 +30,7 @@ impl Report {
         self.service_token.as_str()
     }
 
-    pub fn usages(&self) -> &HashMap<String, Vec<(String, String)>> {
+    pub fn usages(&self) -> &HashMap<AppIdentifier, Vec<(String, String)>> {
         &self.usages
     }
 }
@@ -39,18 +40,17 @@ impl Report {
 /// which is of threescalers Report request type.
 pub fn report<'a>(
     key: &'a str,
-    apps: &'a HashMap<String, AppDelta>,
+    apps: &'a HashMap<AppIdentifier, HashMap<String, u64>>,
 ) -> Result<Report, anyhow::Error> {
     let keys = key.split('_').collect::<Vec<_>>();
-    let mut usages_map: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let mut usages_map: HashMap<AppIdentifier, Vec<(String, String)>> = HashMap::new();
     for app in apps {
-        let (app_id, app_deltas): (&String, &AppDelta) = app;
+        let (app_id, app_deltas): (&AppIdentifier, &HashMap<String, u64>) = app;
         let usage = app_deltas
-            .usages
             .iter()
             .map(|(m, v)| (m.to_string(), v.to_string()))
             .collect::<Vec<(String, String)>>();
-        usages_map.insert(app_id.to_string(), usage);
+        usages_map.insert(app_id.clone(), usage);
     }
     Ok(Report {
         service_id: keys[0].to_string(),
@@ -64,10 +64,24 @@ pub fn build_report_request(report: &Report) -> Result<Request, anyhow::Error> {
     let creds = Credentials::ServiceToken(ServiceToken::from(report.service_token()));
     let svc = Service::new(report.service_id(), creds);
     let mut app_usage = vec![];
-    for (user_key, usage) in report.usages().iter() {
-        let application = Application::from(UserKey::from(user_key.as_str()));
+    for (app_identifier, usage) in report.usages().iter() {
+        let app;
+        match app_identifier {
+            AppIdentifier::UserKey(user_key) => {
+                debug!("AppIdentifier UserKey: {:?}", user_key);
+                app = Application::from_user_key(user_key.as_ref())
+            }
+            AppIdentifier::AppId(app_id, None) => {
+                debug!("AppIdentifier AppId : {:?}", app_id);
+                app = Application::from_app_id(app_id.as_ref())
+            }
+            AppIdentifier::AppId(app_id, Some(app_key)) => {
+                debug!("AppIdentifier AppId+AppKey : {:?}_{:?}", app_id, app_key);
+                app = Application::from_app_id_and_key(app_id.as_ref(), app_key.as_ref())
+            }
+        }
         let usage = Usage::new(usage);
-        app_usage.push((application, usage))
+        app_usage.push((app, usage))
     }
     let txns = app_usage
         .iter()
