@@ -298,16 +298,24 @@ impl Context for CacheFilter {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                     Ok(Authorization::Status(response)) => {
-                        if let Err(e) = self.handle_auth_response(&response) {
-                            warn!(
-                                "ctxt {}: handling auth response failed: {:?}",
-                                self.context_id, e
-                            );
-                            request_process_failure(self, self)
+                        if response.authorized() {
+                            if let Err(e) = self.handle_auth_response(&response) {
+                                warn!(
+                                    "ctxt {}: handling auth response failed: {:?}",
+                                    self.context_id, e
+                                );
+                                request_process_failure(self, self)
+                            }
+                        } else {
+                            self.send_http_response(
+                                403,
+                                vec![],
+                                Some(response.reason().unwrap().as_bytes()),
+                            )
                         }
                     }
-                    Ok(Authorization::Error(denied_auth)) => {
-                        info!("authorization was denied with code: {}", denied_auth.code());
+                    Ok(Authorization::Error(auth_error)) => {
+                        info!("authorization error with code: {}", auth_error.code());
                         request_process_failure(self, self);
                         return;
                     }

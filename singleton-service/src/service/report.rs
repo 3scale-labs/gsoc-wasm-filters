@@ -64,22 +64,20 @@ pub fn build_report_request(report: &Report) -> Result<Request, anyhow::Error> {
     let creds = Credentials::ServiceToken(ServiceToken::from(report.service_token()));
     let svc = Service::new(report.service_id(), creds);
     let mut app_usage = vec![];
-    for (app_id, usage) in report.usages().iter() {
+    for (app_identifier, usage) in report.usages().iter() {
         let app;
-        match app_id {
-            AppIdentifier::UserKey(_user_key) => {
-                debug!("AppIdentifier UserKey: {}", app_id.as_string());
-                app = Application::from_user_key(app_id.as_string())
+        match app_identifier {
+            AppIdentifier::UserKey(user_key) => {
+                debug!("AppIdentifier UserKey: {:?}", user_key);
+                app = Application::from_user_key(user_key.as_ref())
             }
-            AppIdentifier::AppId(_app_id, None) => {
-                debug!("AppIdentifier AppId : {}", app_id.as_string());
-                app = Application::from_app_id(app_id.as_string())
+            AppIdentifier::AppId(app_id, None) => {
+                debug!("AppIdentifier AppId : {:?}", app_id);
+                app = Application::from_app_id(app_id.as_ref())
             }
-            AppIdentifier::AppId(_app_id, _app_key) => {
-                let app_key = app_id.as_string();
-                debug!("AppIdentifier AppId+AppKey : {}", app_key);
-                let keys = app_key.split('_').collect::<Vec<_>>();
-                app = Application::from_app_id_and_key(keys[0], keys[1])
+            AppIdentifier::AppId(app_id, Some(app_key)) => {
+                debug!("AppIdentifier AppId+AppKey : {:?}_{:?}", app_id, app_key);
+                app = Application::from_app_id_and_key(app_id.as_ref(), app_key.as_ref())
             }
         }
         let usage = Usage::new(usage);

@@ -12,9 +12,9 @@ use threescalers::{
 
 /// Proxy level representation for authorization request.
 pub struct Auth {
-    pub service_id: String,
-    pub service_token: String,
-    pub app_id: AppIdentifier,
+    service_id: String,
+    service_token: String,
+    app_id: AppIdentifier,
 }
 
 impl Auth {
@@ -58,19 +58,17 @@ pub fn build_auth_request(auth: &Auth) -> Result<Request, anyhow::Error> {
     let svc = Service::new(auth.service_id(), creds);
     let app;
     match auth.app_id() {
-        AppIdentifier::UserKey(_user_key) => {
-            debug!("AppIdentifier UserKey: {}", auth.app_id().as_string());
-            app = Application::from_user_key(auth.app_id().as_string())
+        AppIdentifier::UserKey(user_key) => {
+            debug!("AppIdentifier UserKey: {:?}", user_key);
+            app = Application::from_user_key(user_key.as_ref())
         }
-        AppIdentifier::AppId(_app_id, None) => {
-            debug!("AppIdentifier AppId : {}", auth.app_id().as_string());
-            app = Application::from_app_id(auth.app_id().as_string())
+        AppIdentifier::AppId(app_id, None) => {
+            debug!("AppIdentifier AppId : {:?}", app_id);
+            app = Application::from_app_id(app_id.as_ref())
         }
-        AppIdentifier::AppId(_app_id, _app_key) => {
-            let app_key = auth.app_id().as_string();
-            debug!("AppIdentifier AppId+AppKey : {}", app_key);
-            let keys = app_key.split('_').collect::<Vec<_>>();
-            app = Application::from_app_id_and_key(keys[0], keys[1])
+        AppIdentifier::AppId(app_id, Some(app_key)) => {
+            debug!("AppIdentifier AppId+AppKey : {:?}_{:?}", app_id, app_key);
+            app = Application::from_app_id_and_key(app_id.as_ref(), app_key.as_ref())
         }
     }
     let txn = vec![(Transaction::new(&app, None, None, None))];
