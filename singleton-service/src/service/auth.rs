@@ -1,4 +1,5 @@
 use log::debug;
+use std::borrow::Cow;
 use threescale::structs::AppIdentifier;
 use threescalers::{
     api_call::{ApiCall, Kind},
@@ -73,7 +74,9 @@ pub fn build_auth_request(auth: &Auth) -> Result<Request, anyhow::Error> {
     }
     let txn = vec![(Transaction::new(&app, None, None, None))];
     // TODO : Enable list keys extension.
-    let extensions = extensions::List::new().push(extensions::Extension::Hierarchy);
+    let extensions = extensions::List::new()
+        .push(extensions::Extension::Hierarchy)
+        .push(extensions::Extension::ListAppKeys(1.to_string().into()));
     let mut api_call = ApiCall::builder(&svc);
     let api_call = api_call
         .transactions(&txn)

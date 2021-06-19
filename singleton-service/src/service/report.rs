@@ -88,7 +88,8 @@ pub fn build_report_request(report: &Report) -> Result<Request, anyhow::Error> {
         .map(|au| (Transaction::new(&au.0, None, Some(&au.1), None)))
         .collect::<Vec<_>>();
     // TODO : Add FlatUsage extension
-    let extensions = extensions::List::new();
+    let extensions =
+        extensions::List::new().push(extensions::Extension::FlatUsage(1.to_string().into()));
     let mut api_call = ApiCall::builder(&svc);
     let api_call = api_call
         .transactions(&txns)

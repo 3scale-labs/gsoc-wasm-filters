@@ -16,13 +16,16 @@ use std::time::Duration;
 use thiserror::Error;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
-    structs::{AppIdentifier, CacheKey, Message, ServiceId, ServiceToken, ThreescaleData, UserKey},
+    structs::{
+        AppIdentifier, CacheKey, Message, ServiceId, ServiceToken, ThreescaleData, UsageReport,
+        UserKey, PeriodWindow, Application, AppId
+    },
     upstream::*,
-    utils::update_metrics,
+    utils::{period_from_response, update_metrics},
 };
 use threescalers::http::Request;
-use threescalers::response::Authorization;
-
+use threescalers::response::{Authorization, UsageReports};
+use std::convert::TryInto;
 // QUEUE_NAME should be the same as the one in cache filter.
 const QUEUE_NAME: &str = "message_queue";
 
@@ -36,6 +39,21 @@ pub enum SingletonServiceError {
 
     #[error("Error settiing local cache entry for cache key: {0}")]
     SetCacheFailure(String),
+
+    #[error("Empty reports for authorize for app_id: {0}")]
+    EmptyAuthUsages(String),
+
+    #[error("Authorize response error for app_id: {0}")]
+    AuthResponse(String),
+
+    #[error("Authorize response processing error for app_id: {0}")]
+    AuthResponseProcess(String),
+
+    #[error("Authorize response app_keys missing")]
+    AuthAppKeysMissing,
+
+    #[error("conversion from i64 time to u64 duration failed")]
+    NegativeTimeErr,
 }
 
 #[no_mangle]
@@ -380,17 +398,58 @@ impl SingletonService {
 
     /// Handle Authorize response received from the 3scale SM API. Depending on the response,
     /// several operations will be performed like cache update.
-    fn handle_auth_response(&self, response: Vec<u8>, _status: &str) {
+    fn handle_auth_response(&self, response: Vec<u8>, _status: &str) -> Result<(), anyhow::Error> {
         // TODO : Handle cache update after enabling list keys extension for both 200 and 409.
         match Authorization::from_str(std::str::from_utf8(&response).unwrap()) {
             Ok(Authorization::Status(data)) => {
-                info!("auth response : {:?}", data)
+                info!("auth response : {:?}", data);
+                let app_keys = data
+                    .app_keys()
+                    .ok_or(SingletonServiceError::AuthAppKeysMissing)?;
+                let app_id = AppIdentifier::from(AppId::from(app_keys.app_id().unwrap().as_ref()));
+                let service_id = ServiceId::from(app_keys.service_id().unwrap().as_ref());
+                let mut new_app_state = HashMap::new();
+                let UsageReports::UsageReports(reports) = data
+                    .usage_reports()
+                    .ok_or_else(|| SingletonServiceError::EmptyAuthUsages("124".to_string()))?;
+                for usage in reports {
+                    new_app_state.insert(
+                        usage.metric.clone(),
+                        UsageReport {
+                            period_window: PeriodWindow {
+                                start: Duration::from_secs(usage.period_start.0.try_into().or(Err(SingletonServiceError::NegativeTimeErr))?),
+                                end: Duration::from_secs(usage.period_end.0.try_into().or(Err(SingletonServiceError::NegativeTimeErr))?),
+                                window: period_from_response(&usage.period),
+                            },
+                            left_hits: usage.current_value,
+                            max_value: usage.max_value,
+                        },
+                    );
+                }
+                let mut hierarchy = HashMap::new();
+                if let Some(metrics) = data.hierarchy() {
+                    for (parent, children) in metrics.iter() {
+                        hierarchy.insert(parent.clone(), children.clone());
+                    }
+                }
+                let app = Application {
+                    app_id: app_id.clone(),
+                    service_id: service_id.clone(),
+                    local_state: new_app_state,
+                    metric_hierarchy: hierarchy,
+                };
+                set_application_to_cache(CacheKey::from(&service_id, &app_id).as_string().as_ref(), &app, false, None);
+                Ok(())
             }
             Ok(Authorization::Error(error)) => {
-                info!("auth denied response: {:?}", error)
+                info!("auth denied response: {:?}", error);
+                anyhow::bail!(SingletonServiceError::AuthResponse("124".to_string()))
             }
             Err(e) => {
-                info!("error processing auth response: {:?}", e)
+                info!("error processing auth response: {:?}", e);
+                anyhow::bail!(SingletonServiceError::AuthResponseProcess(
+                    "124".to_string(),
+                ))
             }
         }
     }

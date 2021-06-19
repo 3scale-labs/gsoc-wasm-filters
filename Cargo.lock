@@ -334,13 +334,14 @@ dependencies = [
  "log 0.4.14",
  "proxy-wasm",
  "serde 1.0.126",
+ "threescalers",
  "url",
 ]
 
 [[package]]
 name = "threescalers"
 version = "0.7.0"
-source = "git+https://github.com/3scale-rs/threescalers?branch=master#64e6df340c688fffc1f7f7c3c49071842ac1b175"
+source = "git+https://github.com/3scale-rs/threescalers?branch=master#2f70e5e95696ca7375361c6f70f87f6bda11062c"
 dependencies = [
  "anyhow",
  "autocfg 1.0.1 (git+https://github.com/unleashed/autocfg?branch=probe_feature)",

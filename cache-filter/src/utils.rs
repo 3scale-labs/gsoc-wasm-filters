@@ -103,14 +103,14 @@ pub fn do_auth_call<C: proxy_wasm::traits::HttpContext>(
     Action::Pause
 }
 
-pub fn period_from_response(res_period: &ResponsePeriod) -> Period {
-    match res_period {
-        ResponsePeriod::Minute => Period::Minute,
-        ResponsePeriod::Hour => Period::Hour,
-        ResponsePeriod::Day => Period::Day,
-        ResponsePeriod::Week => Period::Week,
-        ResponsePeriod::Month => Period::Month,
-        ResponsePeriod::Year => Period::Year,
-        ResponsePeriod::Eternity => Period::Eternity,
-    }
-}
+// pub fn period_from_response(res_period: &ResponsePeriod) -> Period {
+//     match res_period {
+//         ResponsePeriod::Minute => Period::Minute,
+//         ResponsePeriod::Hour => Period::Hour,
+//         ResponsePeriod::Day => Period::Day,
+//         ResponsePeriod::Week => Period::Week,
+//         ResponsePeriod::Month => Period::Month,
+//         ResponsePeriod::Year => Period::Year,
+//         ResponsePeriod::Eternity => Period::Eternity,
+//     }
+// }

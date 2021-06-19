@@ -1,6 +1,6 @@
 use crate::{
     configuration::FilterConfig,
-    utils::{do_auth_call, in_request_failure, period_from_response, request_process_failure},
+    utils::{do_auth_call, in_request_failure, request_process_failure},
 };
 use log::{info, warn};
 use proxy_wasm::{
@@ -15,6 +15,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::*,
+    utils::period_from_response
 };
 use threescalers::response::{Authorization, AuthorizationStatus, UsageReports};
 

@@ -181,14 +181,7 @@ impl AppIdentifier {
     // This cannot return a reference because app_id:app_key needs to be generated
     pub fn as_string(&self) -> String {
         match self {
-            AppIdentifier::AppId(AppId(id), key) => {
-                let mut res: String = id.clone();
-                if let Some(AppKey(app_key)) = key {
-                    res.push(':');
-                    res.push_str(app_key.as_str());
-                }
-                res
-            }
+            AppIdentifier::AppId(AppId(id), _key) => id.clone(),
             AppIdentifier::UserKey(UserKey(user_key)) => user_key.clone(),
         }
     }
