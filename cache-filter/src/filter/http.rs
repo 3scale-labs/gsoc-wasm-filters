@@ -15,7 +15,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::*,
-    utils::period_from_response
+    utils::period_from_response,
 };
 use threescalers::response::{Authorization, AuthorizationStatus, UsageReports};
 

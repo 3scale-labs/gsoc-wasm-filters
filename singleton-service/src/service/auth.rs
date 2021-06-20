@@ -38,18 +38,22 @@ pub fn auth_apps(service_key: String, app_keys: Vec<AppIdentifier>) -> Vec<Auth>
     let keys = service_key.split('_').collect::<Vec<_>>();
     app_keys
         .iter()
-        .map(|app| auth(keys[0].to_string(), keys[1].to_string(), app.clone()))
+        .map(|app| auth(keys[0].to_string(), keys[1].to_string(), app.clone()).unwrap())
         .collect::<Vec<_>>()
 }
 
 /// Create a Auth object for an application. Take service_id, service_token and app_id of type
 /// AppIdentifier and returns an Auth object.
-pub fn auth(service_id: String, service_token: String, app_id: AppIdentifier) -> Auth {
-    Auth {
+pub fn auth(
+    service_id: String,
+    service_token: String,
+    app_id: AppIdentifier,
+) -> Result<Auth, anyhow::Error> {
+    Ok(Auth {
         service_id,
         service_token,
         app_id,
-    }
+    })
 }
 
 /// Create a Request of type Authorize. Take an object of type Auth as argument to the function

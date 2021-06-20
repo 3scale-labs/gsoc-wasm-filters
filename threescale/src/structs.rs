@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
+use std::hash::{Hash, Hasher};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Period {
@@ -95,7 +96,7 @@ impl From<&str> for AppKey {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceToken(String);
 #[repr(transparent)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ServiceId(String);
 
 impl AsRef<str> for ServiceToken {
@@ -122,7 +123,7 @@ impl From<&str> for ServiceId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CacheKey(ServiceId, AppIdentifier);
 
 impl<'a> CacheKey {
@@ -153,7 +154,7 @@ impl<'a> CacheKey {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub enum AppIdentifier {
     AppId(AppId, Option<AppKey>),
     UserKey(UserKey),
@@ -192,6 +193,18 @@ impl AppIdentifier {
             return AppIdentifier::AppId(AppId(v[0].to_owned()), Some(AppKey(v[1].to_owned())));
         }
         AppIdentifier::AppId(AppId(v[0].to_owned()), None)
+    }
+}
+
+impl Hash for AppIdentifier {
+    fn hash<H : Hasher>(&self ,state: &mut H){
+        self.as_string().hash(state);
+    }
+}
+
+impl PartialEq for AppIdentifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_string() == other.as_string()
     }
 }
 
