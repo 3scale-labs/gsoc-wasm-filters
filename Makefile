@@ -24,4 +24,5 @@ release:
 clean:
 		rm ./deployments/docker-compose/cache_filter.wasm
 		rm ./deployments/docker-compose/singleton_service.wasm
+
 		
