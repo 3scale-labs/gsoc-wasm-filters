@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::time::Duration;
 use std::hash::{Hash, Hasher};
+use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Period {
@@ -123,7 +123,7 @@ impl From<&str> for ServiceId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct CacheKey(ServiceId, AppIdentifier);
 
 impl<'a> CacheKey {
@@ -151,6 +151,18 @@ impl<'a> CacheKey {
             0: a.clone(),
             1: b.clone(),
         }
+    }
+}
+
+impl Hash for CacheKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_string().hash(state);
+    }
+}
+
+impl PartialEq for CacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_string() == other.as_string()
     }
 }
 
@@ -183,13 +195,14 @@ impl AppIdentifier {
     pub fn as_string(&self) -> String {
         match self {
             AppIdentifier::AppId(AppId(id), _key) => id.clone(),
+            // Unreachable condition once we map user_key to app_id.
             AppIdentifier::UserKey(UserKey(user_key)) => user_key.clone(),
         }
     }
 
     pub fn appid_from_str(s: &str) -> AppIdentifier {
         let v: Vec<&str> = s.split(':').collect();
-        if v.len() == 1 {
+        if v.len() == 2 {
             return AppIdentifier::AppId(AppId(v[0].to_owned()), Some(AppKey(v[1].to_owned())));
         }
         AppIdentifier::AppId(AppId(v[0].to_owned()), None)
@@ -197,7 +210,7 @@ impl AppIdentifier {
 }
 
 impl Hash for AppIdentifier {
-    fn hash<H : Hasher>(&self ,state: &mut H){
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.as_string().hash(state);
     }
 }
@@ -215,10 +228,11 @@ pub struct Application {
     pub service_id: ServiceId,
     pub local_state: HashMap<String, UsageReport>,
     pub metric_hierarchy: HashMap<String, Vec<String>>,
+    pub app_keys: Option<Vec<AppKey>>,
 }
 
 // Request data recieved from previous filters
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ThreescaleData {
     // TODO: App_key, user_key is also possible as an input
     pub app_id: AppIdentifier,
@@ -238,7 +252,7 @@ impl Default for ThreescaleData {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Message {
     pub update_cache_from_singleton: bool,
     pub data: ThreescaleData,

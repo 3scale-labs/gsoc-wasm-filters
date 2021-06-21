@@ -85,3 +85,24 @@ static_resources:
               socket_address:
                 address: backend_service
                 port_value: 8000
+  
+  - name: outbound|443||su1.3scale.net
+    connect_timeout: 5s
+    type: logical_dns
+    lb_policy: round_robin
+    upstream_connection_options:
+      tcp_keepalive: {}
+    load_assignment:
+      cluster_name: outbound|443||su1.3scale.net
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: su1.3scale.net
+                port_value: 443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: su1.3scale.net

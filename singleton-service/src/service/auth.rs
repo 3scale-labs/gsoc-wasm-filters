@@ -1,5 +1,4 @@
 use log::debug;
-use std::borrow::Cow;
 use threescale::structs::AppIdentifier;
 use threescalers::{
     api_call::{ApiCall, Kind},
@@ -34,6 +33,7 @@ impl Auth {
 
 /// Create a vector of Auth objects for a service. Take service_key(service_id + service_token)
 /// and apps_keys of type Vec<AppIdentifier> as arguments to the function and returns Vec<Auth>.
+#[allow(dead_code)]
 pub fn auth_apps(service_key: String, app_keys: Vec<AppIdentifier>) -> Vec<Auth> {
     let keys = service_key.split('_').collect::<Vec<_>>();
     app_keys
@@ -77,7 +77,6 @@ pub fn build_auth_request(auth: &Auth) -> Result<Request, anyhow::Error> {
         }
     }
     let txn = vec![(Transaction::new(&app, None, None, None))];
-    // TODO : Enable list keys extension.
     let extensions = extensions::List::new()
         .push(extensions::Extension::Hierarchy)
         .push(extensions::Extension::ListAppKeys(1.to_string().into()));

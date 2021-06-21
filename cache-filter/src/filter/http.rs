@@ -44,6 +44,8 @@ enum AuthResponseError {
     NegativeTimeErr,
     #[error("usage reports from 3scale auth response are missing")]
     UsageNotFound,
+    #[error("list app keys from 3scale auth response are missing")]
+    ListKeysMissing,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -80,13 +82,14 @@ impl HttpContext for CacheFilter {
         };
 
         self.cache_key = CacheKey::from(&request_data.service_id, &request_data.app_id);
+        self.req_data = request_data.clone();
         match get_application_from_cache(&self.cache_key.as_string()) {
             Some((app, _)) => {
                 info!("ctxt {}: Cache Hit", context_id);
 
                 let app_ref = RefCell::new(app);
                 match self.handle_cache_hit(&app_ref) {
-                    Ok(()) => Action::Pause,
+                    Ok(()) => Action::Continue,
                     Err(e) => {
                         warn!("ctxt {}: cache hit flow failed: {:#?}", context_id, e);
                         in_request_failure(self, self)
@@ -97,7 +100,7 @@ impl HttpContext for CacheFilter {
                 info!("ctxt {}: Cache Miss", context_id);
                 // TODO: Avoid multiple calls for same application
                 // saving request data to use when there is response from 3scale
-                self.req_data = request_data.clone();
+                // self.req_data = request_data.clone();
                 // fetching new application state using authorize endpoint
                 do_auth_call(self, self, &request_data)
             }
@@ -207,7 +210,11 @@ impl CacheFilter {
         let UsageReports::UsageReports(reports) = response
             .usage_reports()
             .ok_or(AuthResponseError::UsageNotFound)?;
-
+        let app_keys = response
+            .app_keys()
+            .ok_or(AuthResponseError::ListKeysMissing)?;
+        let app_id = AppIdentifier::from(AppId::from(app_keys.app_id().unwrap().as_ref()));
+        let service_id = ServiceId::from(app_keys.service_id().unwrap().as_ref());
         for usage in reports {
             state.insert(
                 usage.metric.clone(),
@@ -242,17 +249,37 @@ impl CacheFilter {
             }
         }
 
-        let app = Application {
-            app_id: self.cache_key.app_id().clone(),
-            service_id: self.cache_key.service_id().clone(),
-            local_state: state,
-            metric_hierarchy: hierarchy,
-        };
+        let app;
+        if let Some(app_keys) = response.app_keys() {
+            let keys = app_keys
+                .keys()
+                .iter()
+                .map(|app_key| AppKey::from(app_key.as_ref()))
+                .collect::<Vec<_>>();
+            app = Application {
+                app_id,
+                service_id,
+                local_state: state,
+                metric_hierarchy: hierarchy,
+                app_keys: Some(keys),
+            };
+        } else {
+            app = Application {
+                app_id,
+                service_id,
+                local_state: state,
+                metric_hierarchy: hierarchy,
+                app_keys: None,
+            };
+        }
 
         set_application_to_cache(&self.cache_key.as_string(), &app, true, None);
 
         match self.handle_cache_hit(&RefCell::new(app)) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                self.resume_http_request();
+                Ok(())
+            }
             Err(e) => Err(AuthResponseError::CacheHitErr(e)),
         }
     }

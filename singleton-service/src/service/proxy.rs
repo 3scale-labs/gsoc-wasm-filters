@@ -1,7 +1,9 @@
 use crate::configuration::service::ServiceConfig;
-use crate::service::auth::*;
-use crate::service::deltas::{DeltaStore, DeltaStoreState};
-use crate::service::report::*;
+use crate::service::{
+    auth::*,
+    deltas::{DeltaStore, DeltaStoreState},
+    report::*,
+};
 use anyhow::*;
 use log::{debug, info, warn};
 use proxy_wasm::{
@@ -9,7 +11,6 @@ use proxy_wasm::{
     traits::{Context, RootContext},
     types::LogLevel,
 };
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::str::FromStr;
@@ -18,16 +19,19 @@ use thiserror::Error;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::{
-        AppId, AppIdentifier, Application, CacheKey, Message, PeriodWindow, ServiceId,
-        ServiceToken, ThreescaleData, UsageReport, UserKey,
+        AppId, AppIdentifier, AppKey, Application, CacheKey, Message, PeriodWindow, ServiceId,
+        ServiceToken, ThreescaleData, UsageReport,
     },
     upstream::*,
     utils::{period_from_response, update_metrics},
 };
-use threescalers::http::Request;
-use threescalers::response::{Authorization, UsageReports};
+use threescalers::{
+    http::Request,
+    response::{Authorization, UsageReports},
+};
 // QUEUE_NAME should be the same as the one in cache filter.
 const QUEUE_NAME: &str = "message_queue";
+const RATE_LIMIT_STATUS: &str = "409";
 
 #[derive(Error, Debug)]
 pub enum SingletonServiceError {
@@ -43,11 +47,11 @@ pub enum SingletonServiceError {
     #[error("Empty reports for authorize for app_id: {0}")]
     EmptyAuthUsages(String),
 
-    #[error("Authorize response error for app_id: {0}")]
-    AuthResponse(String),
+    #[error("Authorize response error")]
+    AuthResponse,
 
-    #[error("Authorize response processing error for app_id: {0}")]
-    AuthResponseProcess(String),
+    #[error("Authorize response processing error")]
+    AuthResponseProcess,
 
     #[error("Authorize response app_keys missing")]
     AuthAppKeysMissing,
@@ -135,27 +139,28 @@ impl RootContext for SingletonService {
     fn on_queue_ready(&mut self, _queue_id: u32) {
         match dequeue_shared_queue(self.queue_id.unwrap()) {
             Ok(queue_entry) => {
-                // TODO : Handle local cache update based on the flag passed from cache filter (when it's implemented)
-                info!(
-                    "Consumed following message from the shared queue: {:?}",
-                    queue_entry
-                );
                 match queue_entry {
                     Some(message) => {
                         // TODO: Hanlde deserialization safely.
                         let message_received: Message = bincode::deserialize(&message).unwrap();
                         // TODO: Handle update failure
+                        info!(
+                            "Consumed following message from the shared queue: {:?}",
+                            message_received
+                        );
                         let threescale: ThreescaleData = message_received.data;
                         if message_received.update_cache_from_singleton {
                             self.update_application_cache(&threescale).unwrap();
                         }
                         // TODO : Handle delta store update failure.
                         self.cache_keys
-                            .entry(
-                                CacheKey::from(&threescale.service_id, &threescale.app_id),
-                            )
+                            .entry(CacheKey::from(&threescale.service_id, &threescale.app_id))
                             .or_insert_with(|| threescale.service_token.clone());
-                        self.delta_store.update_delta_store(&threescale).unwrap();
+                        let delta_store_state =
+                            self.delta_store.update_delta_store(&threescale).unwrap();
+                        if delta_store_state == DeltaStoreState::Flush {
+                            self.flush_local_cache();
+                        }
                     }
                     None => {
                         info!("No application found from the message queue entry")
@@ -175,86 +180,7 @@ impl RootContext for SingletonService {
     fn on_tick(&mut self) {
         // This is just a demo of adding delta entries to delta store and flushing them.
         info!("onTick triggerd. starting test scenario....");
-        // let metrics1: HashMap<String, u64> = [
-        //     ("hits".to_string(), 1_u64),
-        //     ("hits.79419".to_string(), 1_u64),
-        // ]
-        // .iter()
-        // .cloned()
-        // .collect();
-        // let threescale1 = ThreescaleData {
-        //     app_id: AppIdentifier::UserKey(UserKey::from(
-        //         self.config
-        //             .test_config
-        //             .clone()
-        //             .unwrap()
-        //             .application_1
-        //             .as_str(),
-        //     )),
-        //     service_id: ServiceId::from(
-        //         self.config
-        //             .test_config
-        //             .clone()
-        //             .unwrap()
-        //             .service_id_1
-        //             .as_str(),
-        //     ),
-        //     service_token: ServiceToken::from(
-        //         self.config
-        //             .test_config
-        //             .clone()
-        //             .unwrap()
-        //             .service_token_1
-        //             .as_str(),
-        //     ),
-        //     metrics: RefCell::new(metrics1),
-        // };
-        // let metrics2: HashMap<String, u64> = [
-        //     ("hits".to_string(), 1_u64),
-        //     ("hits.73545".to_string(), 1_u64),
-        // ]
-        // .iter()
-        // .cloned()
-        // .collect();
-        // let threescale2 = ThreescaleData {
-        //     app_id: AppIdentifier::UserKey(UserKey::from(
-        //         self.config
-        //             .test_config
-        //             .clone()
-        //             .unwrap()
-        //             .application_2
-        //             .as_str(),
-        //     )),
-        //     service_id: ServiceId::from(
-        //         self.config
-        //             .test_config
-        //             .clone()
-        //             .unwrap()
-        //             .service_id_2
-        //             .as_str(),
-        //     ),
-        //     service_token: ServiceToken::from(
-        //         self.config
-        //             .test_config
-        //             .clone()
-        //             .unwrap()
-        //             .service_token_2
-        //             .as_str(),
-        //     ),
-        //     metrics: RefCell::new(metrics2),
-        // };
-        // let state1 = self.delta_store.update_delta_store(&threescale1).unwrap();
-        // if state1 == DeltaStoreState::Flush {
-        //     info!("Cache flush required. flushing....");
-        //     self.flush_local_cache();
-        // }
-        // let state2 = self.delta_store.update_delta_store(&threescale2).unwrap();
-        // if state2 == DeltaStoreState::Flush {
-        //     info!("Cache flush required. flushing....");
-        //     self.flush_local_cache();
-        // }
-        self.cache_keys.insert(CacheKey::from(&ServiceId::from("2555417889374"), &AppIdentifier::from(UserKey::from("de90b3d58dc5449572d2fdb7ae0af61a"))), ServiceToken::from("e1abc8f29e6ba7dfed3fcc9c5399be41f7a881f85fa11df68b93a5d800c3c07a"));
-        self.update_local_cache();
+        // TODO : Perform periodical cache flush based on timestamp.
     }
 }
 
@@ -276,7 +202,8 @@ impl Context for SingletonService {
         match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => {
                 info!("Auth response");
-                self.handle_auth_response(bytes, &status);
+                // TODO : Handle auth processing.
+                self.handle_auth_response(bytes, &status).unwrap();
             }
             None => {
                 info!("Report response");
@@ -330,7 +257,7 @@ impl SingletonService {
     fn perform_http_call(&self, request: &Request) -> Result<u32, anyhow::Error> {
         // TODO: read upstream from config when configuration parsing is re-implemented.
         let upstream = Upstream {
-            name: "3scale-SM-API".to_string(),
+            name: "outbound|443||su1.3scale.net".to_string(),
             url: "https://su1.3scale.net".parse().unwrap(),
             timeout: Duration::from_millis(5000),
         };
@@ -382,34 +309,12 @@ impl SingletonService {
                 self.perform_http_call(&request);
             }
         }
-        //self.update_local_cache(auth_keys);
+        self.update_local_cache();
     }
 
     /// Update the local cache by sending authorize requests to 3scale SM API.
-    /// TODO : Remove function arguments and read services and apps from hashmap
-    /// stored in the singleton service after cache filter integration.
     fn update_local_cache(&self) {
-        // for (service, apps) in auth_keys {
-        //     let auth_data: Vec<Auth> = auth_apps(service, apps);
-        //     let auth_requests: Vec<Request> = auth_data
-        //         .iter()
-        //         .map(|app| build_auth_request(app).unwrap())
-        //         .collect::<Vec<_>>();
-        //     auth_requests.iter().for_each(|request| {
-        //         #[allow(unused_must_use)]
-        //         {
-        //             // TODO : Handle local failure.
-        //             self.perform_http_call(request);
-        //         }
-        //     })
-        // }
         for (cache_key, service_token) in self.cache_keys.iter() {
-            let auth_app: Auth = auth(
-                cache_key.service_id().as_ref().to_string(),
-                service_token.as_ref().to_string(),
-                cache_key.app_id().clone(),
-            )
-            .unwrap();
             if let Ok(auth_request) = auth(
                 cache_key.service_id().as_ref().to_string(),
                 service_token.as_ref().to_string(),
@@ -417,84 +322,109 @@ impl SingletonService {
             )
             .and_then(|auth_app| build_auth_request(&auth_app))
             {
-                self.perform_http_call(&auth_request);
+                // TODO : Handle local failure.
+                self.perform_http_call(&auth_request).unwrap();
             } else {
-                print!("Error creating Auth request")
+                // TODO : Handle threescalers auth request creation.
+                info!("Error creating Auth request")
             }
         }
     }
 
     /// Handle Authorize response received from the 3scale SM API. Depending on the response,
     /// several operations will be performed like cache update.
-    fn handle_auth_response(&self, response: Vec<u8>, _status: &str) -> Result<(), anyhow::Error> {
+    fn handle_auth_response(&self, response: Vec<u8>, status: &str) -> Result<(), anyhow::Error> {
         // TODO : Handle cache update after enabling list keys extension for both 200 and 409.
         match Authorization::from_str(std::str::from_utf8(&response).unwrap()) {
             Ok(Authorization::Status(data)) => {
                 info!("auth response : {:?}", data);
-                let app_keys = data
-                    .app_keys()
-                    .ok_or(SingletonServiceError::AuthAppKeysMissing)?;
-                let app_id = AppIdentifier::from(AppId::from(app_keys.app_id().unwrap().as_ref()));
-                let service_id = ServiceId::from(app_keys.service_id().unwrap().as_ref());
-                let mut new_app_state = HashMap::new();
-                let UsageReports::UsageReports(reports) = data
-                    .usage_reports()
-                    .ok_or_else(|| SingletonServiceError::EmptyAuthUsages("124".to_string()))?;
-                for usage in reports {
-                    new_app_state.insert(
-                        usage.metric.clone(),
-                        UsageReport {
-                            period_window: PeriodWindow {
-                                start: Duration::from_secs(
-                                    usage
-                                        .period_start
-                                        .0
-                                        .try_into()
-                                        .or(Err(SingletonServiceError::NegativeTimeErr))?,
-                                ),
-                                end: Duration::from_secs(
-                                    usage
-                                        .period_end
-                                        .0
-                                        .try_into()
-                                        .or(Err(SingletonServiceError::NegativeTimeErr))?,
-                                ),
-                                window: period_from_response(&usage.period),
+                if data.authorized() || status == RATE_LIMIT_STATUS {
+                    let app_keys = data
+                        .app_keys()
+                        .ok_or(SingletonServiceError::AuthAppKeysMissing)?;
+                    let app_id =
+                        AppIdentifier::from(AppId::from(app_keys.app_id().unwrap().as_ref()));
+                    let service_id = ServiceId::from(app_keys.service_id().unwrap().as_ref());
+                    let mut new_app_state = HashMap::new();
+                    let UsageReports::UsageReports(reports) =
+                        data.usage_reports().ok_or_else(|| {
+                            SingletonServiceError::EmptyAuthUsages(app_id.as_string())
+                        })?;
+                    for usage in reports {
+                        new_app_state.insert(
+                            usage.metric.clone(),
+                            UsageReport {
+                                period_window: PeriodWindow {
+                                    start: Duration::from_secs(
+                                        usage
+                                            .period_start
+                                            .0
+                                            .try_into()
+                                            .or(Err(SingletonServiceError::NegativeTimeErr))?,
+                                    ),
+                                    end: Duration::from_secs(
+                                        usage
+                                            .period_end
+                                            .0
+                                            .try_into()
+                                            .or(Err(SingletonServiceError::NegativeTimeErr))?,
+                                    ),
+                                    window: period_from_response(&usage.period),
+                                },
+                                left_hits: usage.current_value,
+                                max_value: usage.max_value,
                             },
-                            left_hits: usage.current_value,
-                            max_value: usage.max_value,
-                        },
-                    );
-                }
-                let mut hierarchy = HashMap::new();
-                if let Some(metrics) = data.hierarchy() {
-                    for (parent, children) in metrics.iter() {
-                        hierarchy.insert(parent.clone(), children.clone());
+                        );
                     }
+                    let mut hierarchy = HashMap::new();
+                    if let Some(metrics) = data.hierarchy() {
+                        for (parent, children) in metrics.iter() {
+                            hierarchy.insert(parent.clone(), children.clone());
+                        }
+                    }
+
+                    let app;
+                    if let Some(app_keys) = data.app_keys() {
+                        let keys = app_keys
+                            .keys()
+                            .iter()
+                            .map(|app_key| AppKey::from(app_key.as_ref()))
+                            .collect::<Vec<_>>();
+                        app = Application {
+                            app_id: app_id.clone(),
+                            service_id: service_id.clone(),
+                            local_state: new_app_state,
+                            metric_hierarchy: hierarchy,
+                            app_keys: Some(keys),
+                        };
+                    } else {
+                        app = Application {
+                            app_id: app_id.clone(),
+                            service_id: service_id.clone(),
+                            local_state: new_app_state,
+                            metric_hierarchy: hierarchy,
+                            app_keys: None,
+                        };
+                    }
+
+                    set_application_to_cache(
+                        CacheKey::from(&service_id, &app_id).as_string().as_ref(),
+                        &app,
+                        false,
+                        None,
+                    );
+                    Ok(())
+                } else {
+                    anyhow::bail!(SingletonServiceError::AuthResponse)
                 }
-                let app = Application {
-                    app_id: app_id.clone(),
-                    service_id: service_id.clone(),
-                    local_state: new_app_state,
-                    metric_hierarchy: hierarchy,
-                };
-                set_application_to_cache(
-                    CacheKey::from(&service_id, &app_id).as_string().as_ref(),
-                    &app,
-                    false,
-                    None,
-                );
-                Ok(())
             }
             Ok(Authorization::Error(error)) => {
-                info!("auth denied response: {:?}", error);
-                anyhow::bail!(SingletonServiceError::AuthResponse("124".to_string()))
+                info!("auth error response: {:?}", error);
+                anyhow::bail!(SingletonServiceError::AuthResponse)
             }
             Err(e) => {
                 info!("error processing auth response: {:?}", e);
-                anyhow::bail!(SingletonServiceError::AuthResponseProcess(
-                    "124".to_string(),
-                ))
+                anyhow::bail!(SingletonServiceError::AuthResponseProcess)
             }
         }
     }
@@ -505,6 +435,4 @@ impl SingletonService {
         // TODO : Handle report failure by storing the data in shared data.
         info!("Report status : {}", status);
     }
-
-    fn handle_failure(&self) {}
 }
