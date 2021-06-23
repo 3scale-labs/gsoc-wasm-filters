@@ -2,7 +2,7 @@ use crate::{
     configuration::FilterConfig,
     utils::{do_auth_call, in_request_failure, request_process_failure},
 };
-use log::{info, warn};
+use log::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext},
     types::Action,
@@ -15,7 +15,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use std::vec;
 use threescale::{
     proxy::{
-        get_app_id_from_cache, get_application_from_cache, set_application_to_cache, CacheKey,
+        get_app_id_from_cache, get_application_from_cache, set_app_id_to_cache,
+        set_application_to_cache, CacheError, CacheKey,
     },
     structs::*,
 };
@@ -48,6 +49,8 @@ enum AuthResponseError {
     UsageNotFound,
     #[error("list app keys from 3scale auth response are missing")]
     ListKeysMissing,
+    #[error("failed to map user_key to app_id in the cache")]
+    AppIdNotMapped(#[from] CacheError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -60,6 +63,8 @@ pub enum RequestDataError {
     UsageNotFound,
     #[error("deserializing usage data failed")]
     DeserializeFail(#[from] serde_json::Error),
+    #[error("no authentication pattern provided in the request metadata")]
+    AuthKeyMissing,
 }
 
 pub struct CacheFilter {
@@ -76,7 +81,7 @@ impl HttpContext for CacheFilter {
         let mut request_data = match self.get_request_data() {
             Ok(data) => data,
             Err(e) => {
-                info!("ctxt {}: fetching request data failed: {}", e, context_id);
+                debug!("ctxt {}: fetching request data failed: {}", e, context_id);
                 // Send back local response for not providing relevant request data
                 self.send_http_response(401, vec![], None);
                 return Action::Pause;
@@ -94,7 +99,7 @@ impl HttpContext for CacheFilter {
                     self.cache_key.set_app_id(&request_data.app_id);
                 }
                 Err(e) => {
-                    info!(
+                    debug!(
                         "ctxt {}: failed to map user_key to app_id: {:?}",
                         context_id, e
                     );
@@ -105,8 +110,8 @@ impl HttpContext for CacheFilter {
         }
 
         match get_application_from_cache(&self.cache_key) {
-            Some((app, _)) => {
-                info!("ctxt {}: Cache Hit", context_id);
+            Ok((app, _)) => {
+                info!("ctxt {}: cache hit", context_id);
 
                 let app_ref = RefCell::new(app);
                 match self.handle_cache_hit(&app_ref) {
@@ -117,8 +122,8 @@ impl HttpContext for CacheFilter {
                     }
                 }
             }
-            None => {
-                info!("ctxt {}: Cache Miss", context_id);
+            Err(e) => {
+                info!("ctxt {}: cache miss: {}", context_id, e);
                 // TODO: Avoid multiple calls for same application
                 // saving request data to use when there is response from 3scale
                 // fetching new application state using authorize endpoint
@@ -162,11 +167,11 @@ impl CacheFilter {
 
         let rate_limited: bool = self.is_rate_limited(app, &current_time)?;
         if rate_limited {
-            info!("ctxt {}: Request is rate-limited", self.context_id);
+            info!("ctxt {}: request is rate-limited", self.context_id);
             // TODO: Add how many similar requests can be accepted.
             self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
         } else {
-            info!("ctxt {}: Request is allowed to pass", self.context_id);
+            info!("ctxt {}: request is allowed to pass", self.context_id);
             if !self.report_to_singleton(queue_id) {
                 // TODO: Handle MQ failure here
                 // Update local cache
@@ -234,12 +239,13 @@ impl CacheFilter {
         let app_keys = response
             .app_keys()
             .ok_or(AuthResponseError::ListKeysMissing)?;
-        let app_id = AppIdentifier::from(AppId::from(
+        let app_id = AppId::from(
             app_keys
                 .app_id()
                 .ok_or(AuthResponseError::ListKeysMissing)?
                 .as_ref(),
-        ));
+        );
+        let app_identifier = AppIdentifier::from(app_id.clone());
         let service_id = ServiceId::from(
             app_keys
                 .service_id()
@@ -248,10 +254,12 @@ impl CacheFilter {
         );
 
         // change user_key to app_id for further processing
-        if let AppIdentifier::UserKey(_) = self.cache_key.app_id() {
-            self.cache_key.set_app_id(&app_id);
-            self.req_data.app_id = app_id.clone();
+        if let AppIdentifier::UserKey(user_key) = self.cache_key.app_id() {
+            self.req_data.app_id = app_identifier.clone();
+            set_app_id_to_cache(user_key, &app_id)?;
         }
+
+        self.cache_key.set_app_id(&app_identifier);
 
         for usage in reports {
             state.insert(
@@ -292,7 +300,7 @@ impl CacheFilter {
             .map(|app_key| AppKey::from(app_key.as_ref()))
             .collect::<Vec<_>>();
         let app = Application {
-            app_id,
+            app_id: app_identifier,
             service_id,
             local_state: state,
             metric_hierarchy: hierarchy,
@@ -323,11 +331,15 @@ impl CacheFilter {
             .ok_or(RequestDataError::UsageNotFound)?;
         let usages = serde_json::from_str::<std::collections::HashMap<String, u64>>(&usage_str)?;
 
-        let mut app_id: AppIdentifier = AppIdentifier::UserKey(UserKey::default());
+        let app_id;
         if let Some(user_key) = self.get_http_request_header("x-3scale-user-key") {
             app_id = AppIdentifier::UserKey(UserKey::from(user_key.as_ref()));
-        } else if let Some(app_id_key) = self.get_http_request_header("x-3scale-app-id") {
-            app_id = AppIdentifier::appid_from_str(&app_id_key);
+        } else {
+            app_id = AppIdentifier::appid_from_str(
+                &self
+                    .get_http_request_header("x-3scale-app-id")
+                    .ok_or(RequestDataError::AuthKeyMissing)?,
+            );
         }
 
         Ok(ThreescaleData {

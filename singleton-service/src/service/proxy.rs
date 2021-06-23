@@ -216,7 +216,7 @@ impl SingletonService {
     fn update_application_cache(&self, threescale: &ThreescaleData) -> Result<(), anyhow::Error> {
         let cache_key = CacheKey::from(&threescale.service_id, &threescale.app_id);
         match get_application_from_cache(&cache_key) {
-            Some((mut application, _)) => {
+            Ok((mut application, _)) => {
                 let is_updated: bool = update_metrics(threescale, &mut application);
                 if is_updated {
                     if !set_application_to_cache(&cache_key.as_string(), &application, false, None)
@@ -232,7 +232,7 @@ impl SingletonService {
                     ))
                 }
             }
-            None => {
+            Err(_) => {
                 info!("No app in shared data");
                 anyhow::bail!(SingletonServiceError::GetCacheFailure(
                     cache_key.as_string()

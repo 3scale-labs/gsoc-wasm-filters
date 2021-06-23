@@ -3,7 +3,7 @@ use log::info;
 use proxy_wasm::hostcalls::{get_shared_data, set_shared_data};
 use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum CacheError {
     #[error("app_id not found in the cache")]
     AppIdNotFound,
@@ -13,6 +13,8 @@ pub enum CacheError {
     Utf8Fail(#[from] std::str::Utf8Error),
     #[error("failure caused by an underlying proxy issue")]
     ProxyStatus(u8),
+    #[error("deserializing usage data failed")]
+    DeserializeFail(#[from] bincode::ErrorKind),
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -59,16 +61,14 @@ impl PartialEq for CacheKey {
 }
 
 // Returns Application from shared data with CAS integer
-pub fn get_application_from_cache(key: &CacheKey) -> Option<(Application, u32)> {
+pub fn get_application_from_cache(key: &CacheKey) -> Result<(Application, u32), CacheError> {
     match get_shared_data(&key.as_string()) {
-        Ok((Some(bytes), Some(cas))) => {
-            Some((bincode::deserialize::<Application>(&bytes).unwrap(), cas))
-        }
-        Ok((_bytes, _cas)) => None,
-        Err(e) => {
-            info!("fetching application from cache failed due to: {:?}", e);
-            None
-        }
+        Ok((Some(bytes), Some(cas))) => match bincode::deserialize::<Application>(&bytes) {
+            Ok(app) => Ok((app, cas)),
+            Err(e) => Err(CacheError::DeserializeFail(*e)),
+        },
+        Ok((_bytes, _cas)) => Err(CacheError::AppNotFound),
+        Err(e) => Err(CacheError::ProxyStatus(e as u8)),
     }
 }
 
