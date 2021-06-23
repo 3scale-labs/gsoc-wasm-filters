@@ -79,7 +79,7 @@ pub fn build_auth_request(auth: &Auth) -> Result<Request, anyhow::Error> {
     let txn = vec![(Transaction::new(&app, None, None, None))];
     let extensions = extensions::List::new()
         .push(extensions::Extension::Hierarchy)
-        .push(extensions::Extension::ListAppKeys(1.to_string().into()));
+        .push(extensions::Extension::ListAppKeys("1".into()));
     let mut api_call = ApiCall::builder(&svc);
     let api_call = api_call
         .transactions(&txn)

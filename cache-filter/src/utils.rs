@@ -38,7 +38,6 @@ pub fn do_auth_call<C: HttpContext>(
     let cred = Credentials::ServiceToken(ServiceToken::from(request_data.service_token.as_ref()));
     let service = Service::new(request_data.service_id.as_ref(), cred);
 
-    // TODO: Change this consider every app identifiers
     let app;
     match &request_data.app_id {
         AppIdentifier::UserKey(user_key) => app = Application::from_user_key(user_key.as_ref()),
@@ -58,7 +57,7 @@ pub fn do_auth_call<C: HttpContext>(
 
     let extensions = extensions::List::new()
         .push(extensions::Extension::Hierarchy)
-        .push(extensions::Extension::ListAppKeys(1.to_string().into()));
+        .push(extensions::Extension::ListAppKeys("1".into()));
 
     let mut apicall = ApiCall::builder(&service);
     let apicall = match apicall

@@ -4,3 +4,6 @@ members = [
     "singleton-service",
     "cache-filter"
 ]
+
+[patch.crates-io]
+percent-encoding = { git = "https://github.com/3scale-rs/rust-url", branch = "3scale" }

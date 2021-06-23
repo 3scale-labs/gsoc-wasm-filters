@@ -191,7 +191,6 @@ impl From<UserKey> for AppIdentifier {
 }
 
 impl AppIdentifier {
-    // This cannot return a reference because app_id:app_key needs to be generated
     pub fn as_string(&self) -> String {
         match self {
             AppIdentifier::AppId(AppId(id), _key) => id.clone(),

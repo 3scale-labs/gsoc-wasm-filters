@@ -19,16 +19,13 @@ use thiserror::Error;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::{
-        AppId, AppIdentifier, AppKey, Application, CacheKey, Message, PeriodWindow, ServiceId,
-        ServiceToken, ThreescaleData, UsageReport,
+        AppId, AppIdentifier, AppKey, Application, CacheKey, Message, Period, PeriodWindow,
+        ServiceId, ServiceToken, ThreescaleData, UsageReport,
     },
     upstream::*,
-    utils::{period_from_response, update_metrics},
+    utils::update_metrics,
 };
-use threescalers::{
-    http::Request,
-    response::{Authorization, UsageReports},
-};
+use threescalers::{http::Request, response::Authorization};
 // QUEUE_NAME should be the same as the one in cache filter.
 const QUEUE_NAME: &str = "message_queue";
 const RATE_LIMIT_STATUS: &str = "409";
@@ -338,7 +335,7 @@ impl SingletonService {
         match Authorization::from_str(std::str::from_utf8(&response).unwrap()) {
             Ok(Authorization::Status(data)) => {
                 info!("auth response : {:?}", data);
-                if data.authorized() || status == RATE_LIMIT_STATUS {
+                if data.is_authorized() || status == RATE_LIMIT_STATUS {
                     let app_keys = data
                         .app_keys()
                         .ok_or(SingletonServiceError::AuthAppKeysMissing)?;
@@ -346,10 +343,9 @@ impl SingletonService {
                         AppIdentifier::from(AppId::from(app_keys.app_id().unwrap().as_ref()));
                     let service_id = ServiceId::from(app_keys.service_id().unwrap().as_ref());
                     let mut new_app_state = HashMap::new();
-                    let UsageReports::UsageReports(reports) =
-                        data.usage_reports().ok_or_else(|| {
-                            SingletonServiceError::EmptyAuthUsages(app_id.as_string())
-                        })?;
+                    let reports = data.usage_reports().ok_or_else(|| {
+                        SingletonServiceError::EmptyAuthUsages(app_id.as_string())
+                    })?;
                     for usage in reports {
                         new_app_state.insert(
                             usage.metric.clone(),
@@ -369,7 +365,7 @@ impl SingletonService {
                                             .try_into()
                                             .or(Err(SingletonServiceError::NegativeTimeErr))?,
                                     ),
-                                    window: period_from_response(&usage.period),
+                                    window: Period::from(&usage.period),
                                 },
                                 left_hits: usage.current_value,
                                 max_value: usage.max_value,

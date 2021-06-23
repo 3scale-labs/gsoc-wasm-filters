@@ -12,12 +12,12 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::str::FromStr;
 use std::time::{Duration, UNIX_EPOCH};
+use std::vec;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::*,
-    utils::period_from_response,
 };
-use threescalers::response::{Authorization, AuthorizationStatus, UsageReports};
+use threescalers::response::{Authorization, AuthorizationStatus};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
@@ -152,6 +152,7 @@ impl CacheFilter {
                 // Update local cache
                 // Report to 3scale and get new state using authrep endpoint
             }
+            self.resume_http_request()
         }
         Ok(())
     }
@@ -207,14 +208,24 @@ impl CacheFilter {
     ) -> Result<(), AuthResponseError> {
         // Form application struct from the response
         let mut state = HashMap::new();
-        let UsageReports::UsageReports(reports) = response
+        let reports = response
             .usage_reports()
             .ok_or(AuthResponseError::UsageNotFound)?;
         let app_keys = response
             .app_keys()
             .ok_or(AuthResponseError::ListKeysMissing)?;
-        let app_id = AppIdentifier::from(AppId::from(app_keys.app_id().unwrap().as_ref()));
-        let service_id = ServiceId::from(app_keys.service_id().unwrap().as_ref());
+        let app_id = AppIdentifier::from(AppId::from(
+            app_keys
+                .app_id()
+                .ok_or(AuthResponseError::ListKeysMissing)?
+                .as_ref(),
+        ));
+        let service_id = ServiceId::from(
+            app_keys
+                .service_id()
+                .ok_or(AuthResponseError::ListKeysMissing)?
+                .as_ref(),
+        );
         for usage in reports {
             state.insert(
                 usage.metric.clone(),
@@ -234,7 +245,7 @@ impl CacheFilter {
                                 .try_into()
                                 .or(Err(AuthResponseError::NegativeTimeErr))?,
                         ),
-                        window: period_from_response(&usage.period),
+                        window: Period::from(&usage.period),
                     },
                     left_hits: usage.current_value,
                     max_value: usage.max_value,
@@ -248,38 +259,23 @@ impl CacheFilter {
                 hierarchy.insert(parent.clone(), children.clone());
             }
         }
-
-        let app;
-        if let Some(app_keys) = response.app_keys() {
-            let keys = app_keys
-                .keys()
-                .iter()
-                .map(|app_key| AppKey::from(app_key.as_ref()))
-                .collect::<Vec<_>>();
-            app = Application {
-                app_id,
-                service_id,
-                local_state: state,
-                metric_hierarchy: hierarchy,
-                app_keys: Some(keys),
-            };
-        } else {
-            app = Application {
-                app_id,
-                service_id,
-                local_state: state,
-                metric_hierarchy: hierarchy,
-                app_keys: None,
-            };
-        }
+        let keys = app_keys
+            .keys()
+            .iter()
+            .map(|app_key| AppKey::from(app_key.as_ref()))
+            .collect::<Vec<_>>();
+        let app = Application {
+            app_id,
+            service_id,
+            local_state: state,
+            metric_hierarchy: hierarchy,
+            app_keys: Some(keys),
+        };
 
         set_application_to_cache(&self.cache_key.as_string(), &app, true, None);
 
         match self.handle_cache_hit(&RefCell::new(app)) {
-            Ok(()) => {
-                self.resume_http_request();
-                Ok(())
-            }
+            Ok(()) => Ok(()),
             Err(e) => Err(AuthResponseError::CacheHitErr(e)),
         }
     }
@@ -326,7 +322,7 @@ impl Context for CacheFilter {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                     Ok(Authorization::Status(response)) => {
-                        if response.authorized() {
+                        if response.is_authorized() {
                             if let Err(e) = self.handle_auth_response(&response) {
                                 warn!(
                                     "ctxt {}: handling auth response failed: {:?}",
