@@ -14,7 +14,9 @@ use std::str::FromStr;
 use std::time::{Duration, UNIX_EPOCH};
 use std::vec;
 use threescale::{
-    proxy::cache::{get_application_from_cache, set_application_to_cache},
+    proxy::{
+        get_app_id_from_cache, get_application_from_cache, set_application_to_cache, CacheKey,
+    },
     structs::*,
 };
 use threescalers::response::{Authorization, AuthorizationStatus};
@@ -65,13 +67,13 @@ pub struct CacheFilter {
     pub config: FilterConfig,
     pub update_cache_from_singleton: bool,
     pub cache_key: CacheKey,
-    // This is required for cache miss case
+    // required for cache miss case
     pub req_data: ThreescaleData,
 }
 
 impl HttpContext for CacheFilter {
     fn on_http_request_headers(&mut self, context_id: usize) -> Action {
-        let request_data = match self.get_request_data() {
+        let mut request_data = match self.get_request_data() {
             Ok(data) => data,
             Err(e) => {
                 info!("ctxt {}: fetching request data failed: {}", e, context_id);
@@ -83,7 +85,26 @@ impl HttpContext for CacheFilter {
 
         self.cache_key = CacheKey::from(&request_data.service_id, &request_data.app_id);
         self.req_data = request_data.clone();
-        match get_application_from_cache(&self.cache_key.as_string()) {
+
+        if let AppIdentifier::UserKey(ref user_key) = request_data.app_id {
+            match get_app_id_from_cache(&user_key) {
+                Ok(app_id) => {
+                    request_data.app_id = AppIdentifier::from(app_id);
+                    self.req_data.app_id = request_data.app_id.clone();
+                    self.cache_key.set_app_id(&request_data.app_id);
+                }
+                Err(e) => {
+                    info!(
+                        "ctxt {}: failed to map user_key to app_id: {:?}",
+                        context_id, e
+                    );
+                    // TODO: avoid multiple calls for identical requests
+                    return do_auth_call(self, self, &request_data);
+                }
+            }
+        }
+
+        match get_application_from_cache(&self.cache_key) {
             Some((app, _)) => {
                 info!("ctxt {}: Cache Hit", context_id);
 
@@ -100,7 +121,6 @@ impl HttpContext for CacheFilter {
                 info!("ctxt {}: Cache Miss", context_id);
                 // TODO: Avoid multiple calls for same application
                 // saving request data to use when there is response from 3scale
-                // self.req_data = request_data.clone();
                 // fetching new application state using authorize endpoint
                 do_auth_call(self, self, &request_data)
             }
@@ -226,6 +246,13 @@ impl CacheFilter {
                 .ok_or(AuthResponseError::ListKeysMissing)?
                 .as_ref(),
         );
+
+        // change user_key to app_id for further processing
+        if let AppIdentifier::UserKey(_) = self.cache_key.app_id() {
+            self.cache_key.set_app_id(&app_id);
+            self.req_data.app_id = app_id.clone();
+        }
+
         for usage in reports {
             state.insert(
                 usage.metric.clone(),

@@ -38,14 +38,13 @@ pub fn do_auth_call<C: HttpContext>(
     let cred = Credentials::ServiceToken(ServiceToken::from(request_data.service_token.as_ref()));
     let service = Service::new(request_data.service_id.as_ref(), cred);
 
-    let app;
-    match &request_data.app_id {
-        AppIdentifier::UserKey(user_key) => app = Application::from_user_key(user_key.as_ref()),
-        AppIdentifier::AppId(app_id, None) => app = Application::from_app_id(app_id.as_ref()),
+    let app = match &request_data.app_id {
+        AppIdentifier::UserKey(user_key) => Application::from_user_key(user_key.as_ref()),
+        AppIdentifier::AppId(app_id, None) => Application::from_app_id(app_id.as_ref()),
         AppIdentifier::AppId(app_id, Some(app_key)) => {
-            app = Application::from_app_id_and_key(app_id.as_ref(), app_key.as_ref())
+            Application::from_app_id_and_key(app_id.as_ref(), app_key.as_ref())
         }
-    }
+    };
 
     let mut metrics = Vec::new();
     for (metric, hits) in request_data.metrics.borrow().iter() {

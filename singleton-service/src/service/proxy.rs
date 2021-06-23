@@ -17,10 +17,10 @@ use std::str::FromStr;
 use std::time::Duration;
 use thiserror::Error;
 use threescale::{
-    proxy::cache::{get_application_from_cache, set_application_to_cache},
+    proxy::{get_application_from_cache, set_application_to_cache, CacheKey},
     structs::{
-        AppId, AppIdentifier, AppKey, Application, CacheKey, Message, Period, PeriodWindow,
-        ServiceId, ServiceToken, ThreescaleData, UsageReport,
+        AppId, AppIdentifier, AppKey, Application, Message, Period, PeriodWindow, ServiceId,
+        ServiceToken, ThreescaleData, UsageReport,
     },
     upstream::*,
     utils::update_metrics,
@@ -215,7 +215,7 @@ impl SingletonService {
     /// fails from the cache filter for a particular request.
     fn update_application_cache(&self, threescale: &ThreescaleData) -> Result<(), anyhow::Error> {
         let cache_key = CacheKey::from(&threescale.service_id, &threescale.app_id);
-        match get_application_from_cache(&cache_key.as_string()) {
+        match get_application_from_cache(&cache_key) {
             Some((mut application, _)) => {
                 let is_updated: bool = update_metrics(threescale, &mut application);
                 if is_updated {
@@ -228,7 +228,7 @@ impl SingletonService {
                     Ok(())
                 } else {
                     anyhow::bail!(SingletonServiceError::UpdateMetricsFailure(
-                        threescale.app_id.as_string()
+                        threescale.app_id.as_ref().to_string(),
                     ))
                 }
             }
@@ -344,7 +344,7 @@ impl SingletonService {
                     let service_id = ServiceId::from(app_keys.service_id().unwrap().as_ref());
                     let mut new_app_state = HashMap::new();
                     let reports = data.usage_reports().ok_or_else(|| {
-                        SingletonServiceError::EmptyAuthUsages(app_id.as_string())
+                        SingletonServiceError::EmptyAuthUsages(app_id.as_ref().to_string())
                     })?;
                     for usage in reports {
                         new_app_state.insert(
