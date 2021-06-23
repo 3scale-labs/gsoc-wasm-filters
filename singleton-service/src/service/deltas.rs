@@ -77,6 +77,7 @@ impl DeltaStore {
         }
     }
 
+    // TODO: Handle app_id -> app_id + app_key scenario.
     fn get_mut_app_delta<'a>(
         app: &'a AppIdentifier,
         service: &'a mut HashMap<AppIdentifier, HashMap<String, u64>>,

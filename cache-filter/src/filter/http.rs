@@ -1,6 +1,6 @@
 use crate::{
     configuration::FilterConfig,
-    utils::{do_auth_call, in_request_failure, period_from_response, request_process_failure},
+    utils::{do_auth_call, in_request_failure, request_process_failure},
 };
 use log::{info, warn};
 use proxy_wasm::{
@@ -12,11 +12,12 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::str::FromStr;
 use std::time::{Duration, UNIX_EPOCH};
+use std::vec;
 use threescale::{
     proxy::cache::{get_application_from_cache, set_application_to_cache},
     structs::*,
 };
-use threescalers::response::{Authorization, AuthorizationStatus, UsageReports};
+use threescalers::response::{Authorization, AuthorizationStatus};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
@@ -43,6 +44,8 @@ enum AuthResponseError {
     NegativeTimeErr,
     #[error("usage reports from 3scale auth response are missing")]
     UsageNotFound,
+    #[error("list app keys from 3scale auth response are missing")]
+    ListKeysMissing,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -79,13 +82,14 @@ impl HttpContext for CacheFilter {
         };
 
         self.cache_key = CacheKey::from(&request_data.service_id, &request_data.app_id);
+        self.req_data = request_data.clone();
         match get_application_from_cache(&self.cache_key.as_string()) {
             Some((app, _)) => {
                 info!("ctxt {}: Cache Hit", context_id);
 
                 let app_ref = RefCell::new(app);
                 match self.handle_cache_hit(&app_ref) {
-                    Ok(()) => Action::Pause,
+                    Ok(()) => Action::Continue,
                     Err(e) => {
                         warn!("ctxt {}: cache hit flow failed: {:#?}", context_id, e);
                         in_request_failure(self, self)
@@ -96,7 +100,7 @@ impl HttpContext for CacheFilter {
                 info!("ctxt {}: Cache Miss", context_id);
                 // TODO: Avoid multiple calls for same application
                 // saving request data to use when there is response from 3scale
-                self.req_data = request_data.clone();
+                // self.req_data = request_data.clone();
                 // fetching new application state using authorize endpoint
                 do_auth_call(self, self, &request_data)
             }
@@ -148,6 +152,7 @@ impl CacheFilter {
                 // Update local cache
                 // Report to 3scale and get new state using authrep endpoint
             }
+            self.resume_http_request()
         }
         Ok(())
     }
@@ -203,10 +208,24 @@ impl CacheFilter {
     ) -> Result<(), AuthResponseError> {
         // Form application struct from the response
         let mut state = HashMap::new();
-        let UsageReports::UsageReports(reports) = response
+        let reports = response
             .usage_reports()
             .ok_or(AuthResponseError::UsageNotFound)?;
-
+        let app_keys = response
+            .app_keys()
+            .ok_or(AuthResponseError::ListKeysMissing)?;
+        let app_id = AppIdentifier::from(AppId::from(
+            app_keys
+                .app_id()
+                .ok_or(AuthResponseError::ListKeysMissing)?
+                .as_ref(),
+        ));
+        let service_id = ServiceId::from(
+            app_keys
+                .service_id()
+                .ok_or(AuthResponseError::ListKeysMissing)?
+                .as_ref(),
+        );
         for usage in reports {
             state.insert(
                 usage.metric.clone(),
@@ -226,7 +245,7 @@ impl CacheFilter {
                                 .try_into()
                                 .or(Err(AuthResponseError::NegativeTimeErr))?,
                         ),
-                        window: period_from_response(&usage.period),
+                        window: Period::from(&usage.period),
                     },
                     left_hits: usage.current_value,
                     max_value: usage.max_value,
@@ -240,12 +259,17 @@ impl CacheFilter {
                 hierarchy.insert(parent.clone(), children.clone());
             }
         }
-
+        let keys = app_keys
+            .keys()
+            .iter()
+            .map(|app_key| AppKey::from(app_key.as_ref()))
+            .collect::<Vec<_>>();
         let app = Application {
-            app_id: self.cache_key.app_id().clone(),
-            service_id: self.cache_key.service_id().clone(),
+            app_id,
+            service_id,
             local_state: state,
             metric_hierarchy: hierarchy,
+            app_keys: Some(keys),
         };
 
         set_application_to_cache(&self.cache_key.as_string(), &app, true, None);
@@ -298,7 +322,7 @@ impl Context for CacheFilter {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                     Ok(Authorization::Status(response)) => {
-                        if response.authorized() {
+                        if response.is_authorized() {
                             if let Err(e) = self.handle_auth_response(&response) {
                                 warn!(
                                     "ctxt {}: handling auth response failed: {:?}",

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
@@ -95,7 +96,7 @@ impl From<&str> for AppKey {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceToken(String);
 #[repr(transparent)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ServiceId(String);
 
 impl AsRef<str> for ServiceToken {
@@ -122,7 +123,7 @@ impl From<&str> for ServiceId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct CacheKey(ServiceId, AppIdentifier);
 
 impl<'a> CacheKey {
@@ -153,7 +154,19 @@ impl<'a> CacheKey {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+impl Hash for CacheKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_string().hash(state);
+    }
+}
+
+impl PartialEq for CacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_string() == other.as_string()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub enum AppIdentifier {
     AppId(AppId, Option<AppKey>),
     UserKey(UserKey),
@@ -178,27 +191,32 @@ impl From<UserKey> for AppIdentifier {
 }
 
 impl AppIdentifier {
-    // This cannot return a reference because app_id:app_key needs to be generated
     pub fn as_string(&self) -> String {
         match self {
-            AppIdentifier::AppId(AppId(id), key) => {
-                let mut res: String = id.clone();
-                if let Some(AppKey(app_key)) = key {
-                    res.push(':');
-                    res.push_str(app_key.as_str());
-                }
-                res
-            }
+            AppIdentifier::AppId(AppId(id), _key) => id.clone(),
+            // Unreachable condition once we map user_key to app_id.
             AppIdentifier::UserKey(UserKey(user_key)) => user_key.clone(),
         }
     }
 
     pub fn appid_from_str(s: &str) -> AppIdentifier {
         let v: Vec<&str> = s.split(':').collect();
-        if v.len() == 1 {
+        if v.len() == 2 {
             return AppIdentifier::AppId(AppId(v[0].to_owned()), Some(AppKey(v[1].to_owned())));
         }
         AppIdentifier::AppId(AppId(v[0].to_owned()), None)
+    }
+}
+
+impl Hash for AppIdentifier {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_string().hash(state);
+    }
+}
+
+impl PartialEq for AppIdentifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_string() == other.as_string()
     }
 }
 
@@ -209,10 +227,11 @@ pub struct Application {
     pub service_id: ServiceId,
     pub local_state: HashMap<String, UsageReport>,
     pub metric_hierarchy: HashMap<String, Vec<String>>,
+    pub app_keys: Option<Vec<AppKey>>,
 }
 
 // Request data recieved from previous filters
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ThreescaleData {
     // TODO: App_key, user_key is also possible as an input
     pub app_id: AppIdentifier,
@@ -232,7 +251,7 @@ impl Default for ThreescaleData {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Message {
     pub update_cache_from_singleton: bool,
     pub data: ThreescaleData,

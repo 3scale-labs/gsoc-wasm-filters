@@ -33,22 +33,27 @@ impl Auth {
 
 /// Create a vector of Auth objects for a service. Take service_key(service_id + service_token)
 /// and apps_keys of type Vec<AppIdentifier> as arguments to the function and returns Vec<Auth>.
+#[allow(dead_code)]
 pub fn auth_apps(service_key: String, app_keys: Vec<AppIdentifier>) -> Vec<Auth> {
     let keys = service_key.split('_').collect::<Vec<_>>();
     app_keys
         .iter()
-        .map(|app| auth(keys[0].to_string(), keys[1].to_string(), app.clone()))
+        .map(|app| auth(keys[0].to_string(), keys[1].to_string(), app.clone()).unwrap())
         .collect::<Vec<_>>()
 }
 
 /// Create a Auth object for an application. Take service_id, service_token and app_id of type
 /// AppIdentifier and returns an Auth object.
-pub fn auth(service_id: String, service_token: String, app_id: AppIdentifier) -> Auth {
-    Auth {
+pub fn auth(
+    service_id: String,
+    service_token: String,
+    app_id: AppIdentifier,
+) -> Result<Auth, anyhow::Error> {
+    Ok(Auth {
         service_id,
         service_token,
         app_id,
-    }
+    })
 }
 
 /// Create a Request of type Authorize. Take an object of type Auth as argument to the function
@@ -72,8 +77,9 @@ pub fn build_auth_request(auth: &Auth) -> Result<Request, anyhow::Error> {
         }
     }
     let txn = vec![(Transaction::new(&app, None, None, None))];
-    // TODO : Enable list keys extension.
-    let extensions = extensions::List::new().push(extensions::Extension::Hierarchy);
+    let extensions = extensions::List::new()
+        .push(extensions::Extension::Hierarchy)
+        .push(extensions::Extension::ListAppKeys("1".into()));
     let mut api_call = ApiCall::builder(&svc);
     let api_call = api_call
         .transactions(&txn)
