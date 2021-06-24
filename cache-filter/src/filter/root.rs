@@ -5,7 +5,7 @@ use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
     types::{ContextType, LogLevel},
 };
-use threescale::structs::{CacheKey, ThreescaleData};
+use threescale::{proxy::CacheKey, structs::ThreescaleData};
 
 #[no_mangle]
 pub fn _start() {

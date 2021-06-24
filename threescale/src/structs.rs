@@ -123,49 +123,6 @@ impl From<&str> for ServiceId {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
-pub struct CacheKey(ServiceId, AppIdentifier);
-
-impl<'a> CacheKey {
-    pub fn as_string(&self) -> String {
-        format!("{}_{}", self.0 .0, self.1.as_string())
-    }
-
-    pub fn default() -> CacheKey {
-        CacheKey(
-            ServiceId(String::new()),
-            AppIdentifier::UserKey(UserKey(String::new())),
-        )
-    }
-
-    pub fn service_id(&'a self) -> &'a ServiceId {
-        &self.0
-    }
-
-    pub fn app_id(&'a self) -> &'a AppIdentifier {
-        &self.1
-    }
-
-    pub fn from(a: &ServiceId, b: &AppIdentifier) -> CacheKey {
-        CacheKey {
-            0: a.clone(),
-            1: b.clone(),
-        }
-    }
-}
-
-impl Hash for CacheKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_string().hash(state);
-    }
-}
-
-impl PartialEq for CacheKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_string() == other.as_string()
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub enum AppIdentifier {
     AppId(AppId, Option<AppKey>),
@@ -190,15 +147,17 @@ impl From<UserKey> for AppIdentifier {
     }
 }
 
-impl AppIdentifier {
-    pub fn as_string(&self) -> String {
+impl AsRef<str> for AppIdentifier {
+    fn as_ref(&self) -> &str {
         match self {
-            AppIdentifier::AppId(AppId(id), _key) => id.clone(),
+            AppIdentifier::AppId(AppId(id), _key) => id.as_str(),
             // Unreachable condition once we map user_key to app_id.
-            AppIdentifier::UserKey(UserKey(user_key)) => user_key.clone(),
+            AppIdentifier::UserKey(UserKey(user_key)) => user_key.as_str(),
         }
     }
+}
 
+impl AppIdentifier {
     pub fn appid_from_str(s: &str) -> AppIdentifier {
         let v: Vec<&str> = s.split(':').collect();
         if v.len() == 2 {
@@ -210,13 +169,13 @@ impl AppIdentifier {
 
 impl Hash for AppIdentifier {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_string().hash(state);
+        self.as_ref().hash(state);
     }
 }
 
 impl PartialEq for AppIdentifier {
     fn eq(&self, other: &Self) -> bool {
-        self.as_string() == other.as_string()
+        self.as_ref() == other.as_ref()
     }
 }
 

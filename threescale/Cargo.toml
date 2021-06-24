@@ -18,3 +18,4 @@ proxy-wasm = "0.1"
 anyhow = "1.0"
 threescalers = { git = "https://github.com/3scale-rs/threescalers", branch = "master" }
 url = { git = "https://github.com/3scale-rs/rust-url", branch = "3scale", features = ["serde"] }
+thiserror = "1.0"
