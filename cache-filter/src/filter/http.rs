@@ -48,7 +48,11 @@ enum AuthResponseError {
     #[error("usage reports from 3scale auth response are missing")]
     UsageNotFound,
     #[error("list app keys from 3scale auth response are missing")]
-    ListKeysMissing,
+    ListKeysMiss,
+    #[error("app id field is missing from list keys extension response")]
+    ListAppIdMiss,
+    #[error("app id field is missing from list keys extension response")]
+    ListServiceIdMiss,
     #[error("failed to map user_key to app_id in the cache")]
     AppIdNotMapped(#[from] CacheError),
 }
@@ -236,20 +240,18 @@ impl CacheFilter {
         let reports = response
             .usage_reports()
             .ok_or(AuthResponseError::UsageNotFound)?;
-        let app_keys = response
-            .app_keys()
-            .ok_or(AuthResponseError::ListKeysMissing)?;
+        let app_keys = response.app_keys().ok_or(AuthResponseError::ListKeysMiss)?;
         let app_id = AppId::from(
             app_keys
                 .app_id()
-                .ok_or(AuthResponseError::ListKeysMissing)?
+                .ok_or(AuthResponseError::ListAppIdMiss)?
                 .as_ref(),
         );
         let app_identifier = AppIdentifier::from(app_id.clone());
         let service_id = ServiceId::from(
             app_keys
                 .service_id()
-                .ok_or(AuthResponseError::ListKeysMissing)?
+                .ok_or(AuthResponseError::ListServiceIdMiss)?
                 .as_ref(),
         );
 
@@ -258,8 +260,6 @@ impl CacheFilter {
             self.req_data.app_id = app_identifier.clone();
             set_app_id_to_cache(user_key, &app_id)?;
         }
-
-        self.cache_key.set_app_id(&app_identifier);
 
         for usage in reports {
             state.insert(
