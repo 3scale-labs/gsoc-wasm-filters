@@ -5,6 +5,9 @@ use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use threescalers::response::Period as ResponsePeriod;
 
+pub type Hierarchy = HashMap<String, Vec<String>>;
+pub type Metrics = RefCell<HashMap<String, u64>>;
+
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Period {
     Minute,
@@ -201,7 +204,7 @@ pub struct Application {
     pub app_id: AppIdentifier,
     pub service_id: ServiceId,
     pub local_state: HashMap<String, UsageReport>,
-    pub metric_hierarchy: HashMap<String, Vec<String>>,
+    pub metric_hierarchy: Hierarchy,
     pub app_keys: Option<Vec<AppKey>>,
 }
 
@@ -212,7 +215,7 @@ pub struct ThreescaleData {
     pub app_id: AppIdentifier,
     pub service_id: ServiceId,
     pub service_token: ServiceToken,
-    pub metrics: RefCell<HashMap<String, u64>>,
+    pub metrics: Metrics,
 }
 
 impl Default for ThreescaleData {

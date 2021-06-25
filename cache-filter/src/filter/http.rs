@@ -155,6 +155,7 @@ impl CacheFilter {
 
         let current_time = self.get_current_time().duration_since(UNIX_EPOCH)?;
 
+        add_hierarchy_to_metrics(&app.metric_hierarchy, &mut self.req_data.metrics);
         match limit_check_and_update_application(&self.req_data, app, &current_time) {
             Ok(()) => {
                 // request is not rate-limited and application is updated

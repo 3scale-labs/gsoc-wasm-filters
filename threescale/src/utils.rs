@@ -1,4 +1,4 @@
-use crate::structs::{Application, Period, ThreescaleData};
+use crate::structs::{Application, Hierarchy, Metrics, Period, ThreescaleData};
 use std::time::Duration;
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -51,4 +51,17 @@ pub fn limit_check_and_update_application(
         }
     }
     Ok(())
+}
+
+// It takes the provided hierarchy structure, and uses it
+// to determine how the metrics, m, are affected, incrementing parent metrics
+// based on the value of the parents child/children metrics.
+pub fn add_hierarchy_to_metrics(hierarchy: &Hierarchy, metrics: &mut Metrics) {
+    for (parent, children) in hierarchy.iter() {
+        for (metric, hits) in metrics.borrow().iter() {
+            if children.contains(metric) {
+                *metrics.borrow_mut().entry(parent.to_string()).or_insert(0) += *hits;
+            }
+        }
+    }
 }
