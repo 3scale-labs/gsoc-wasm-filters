@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
+use threescalers::response::Period as ResponsePeriod;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Period {
@@ -25,6 +26,21 @@ impl Period {
             Period::Month => 2592000,
             Period::Year => 31536000,
             Period::Eternity => u64::MAX,
+        }
+    }
+}
+
+impl From<&ResponsePeriod> for Period {
+    fn from(res_period: &ResponsePeriod) -> Self {
+        match res_period {
+            ResponsePeriod::Minute => Period::Minute,
+            ResponsePeriod::Hour => Period::Hour,
+            ResponsePeriod::Day => Period::Day,
+            ResponsePeriod::Week => Period::Week,
+            ResponsePeriod::Month => Period::Month,
+            ResponsePeriod::Year => Period::Year,
+            ResponsePeriod::Eternity => Period::Eternity,
+            _ => Period::Eternity,
         }
     }
 }
@@ -214,13 +230,15 @@ impl Default for ThreescaleData {
 pub struct Message {
     pub update_cache_from_singleton: bool,
     pub data: ThreescaleData,
+    pub req_time: Duration,
 }
 
 impl Message {
-    pub fn new(update_flag: bool, request_data: &ThreescaleData) -> Message {
+    pub fn new(update_flag: bool, request_data: &ThreescaleData, time: &Duration) -> Message {
         Message {
             update_cache_from_singleton: update_flag,
             data: request_data.clone(),
+            req_time: *time,
         }
     }
 }
