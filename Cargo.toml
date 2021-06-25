@@ -4,6 +4,7 @@ members = [
     "singleton-service",
     "cache-filter"
 ]
+exclude = ["threescale-wasm-auth"]
 
 [patch.crates-io]
 percent-encoding = { git = "https://github.com/3scale-rs/rust-url", branch = "3scale" }
