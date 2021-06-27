@@ -46,7 +46,7 @@ jobs:
 
       - uses: actions-rs/cargo@v1
         with:
-          command: install wasm-snip
+          command: add wasm-snip
           #args: --target=wasm32-unknown-unknown
       
       - name: Build application
