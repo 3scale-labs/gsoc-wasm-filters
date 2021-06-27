@@ -45,8 +45,8 @@ jobs:
           override: true
 
       - uses: actions-rs/cargo@v1
-        #with:
-          #command: make release
+        with:
+          command: cargo install wasm-snip
           #args: --target=wasm32-unknown-unknown
       
       - name: Build application
