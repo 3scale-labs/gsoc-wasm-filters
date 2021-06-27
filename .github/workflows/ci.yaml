@@ -46,5 +46,5 @@ jobs:
 
       - uses: actions-rs/cargo@v1
         with:
-          command: build
-          args: --target=wasm32-unknown-unknown
+          command: make release
+          #args: --target=wasm32-unknown-unknown
