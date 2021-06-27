@@ -45,8 +45,10 @@ jobs:
           override: true
 
       - uses: actions-rs/cargo@v1
+      - uses: actions-rs/install@v0.1
         with:
-          command: add wasm-snip
+          crate: wasm-snip
+          version: latest
           #args: --target=wasm32-unknown-unknown
       
       - name: Build application
