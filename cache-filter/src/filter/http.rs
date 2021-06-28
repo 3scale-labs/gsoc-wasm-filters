@@ -101,7 +101,7 @@ impl HttpContext for CacheFilter {
                 }
                 Err(e) => {
                     debug!(
-                        "ctxt {}: failed to map user_key to app_id: {:?}",
+                        "ctxt {}: failed to get app_id for user_key from cache: {:?}",
                         context_id, e
                     );
                     // TODO: avoid multiple calls for identical requests
@@ -213,6 +213,8 @@ impl CacheFilter {
             set_app_id_to_cache(user_key, &app_id)?;
         }
 
+        self.cache_key = CacheKey::from(&service_id, &app_identifier);
+
         for usage in reports {
             state.insert(
                 usage.metric.clone(),
@@ -234,7 +236,7 @@ impl CacheFilter {
                         ),
                         window: Period::from(&usage.period),
                     },
-                    left_hits: usage.current_value,
+                    left_hits: usage.max_value - usage.current_value,
                     max_value: usage.max_value,
                 },
             );
