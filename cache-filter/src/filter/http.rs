@@ -19,6 +19,7 @@ use threescale::{
         set_application_to_cache, CacheError, CacheKey,
     },
     structs::*,
+    utils::*,
 };
 use threescalers::response::{Authorization, AuthorizationStatus};
 
@@ -26,17 +27,13 @@ const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
 
 #[derive(Debug, Clone, thiserror::Error)]
-enum RateLimitError {
-    #[error("overflow due to two duration addition")]
-    DurationOverflow,
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
 enum CacheHitError {
     #[error("duration since time later than self")]
     TimeConversionErr(#[from] std::time::SystemTimeError),
     #[error("failure of is_rate_limited error")]
-    RateLimitErr(#[from] RateLimitError),
+    MetricsCheckFail(#[from] UpdateMetricsError),
+    #[error("unable to resolve message queue with specified vm_id and q_name")]
+    MQNotFound,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -114,11 +111,10 @@ impl HttpContext for CacheFilter {
         }
 
         match get_application_from_cache(&self.cache_key) {
-            Ok((app, _)) => {
+            Ok((mut app, _)) => {
                 info!("ctxt {}: cache hit", context_id);
 
-                let app_ref = RefCell::new(app);
-                match self.handle_cache_hit(&app_ref) {
+                match self.handle_cache_hit(&mut app) {
                     Ok(()) => Action::Continue,
                     Err(e) => {
                         warn!("ctxt {}: cache hit flow failed: {:#?}", context_id, e);
@@ -138,97 +134,53 @@ impl HttpContext for CacheFilter {
 }
 
 impl CacheFilter {
-    fn report_to_singleton(&self, queue_id: Option<u32>) -> bool {
-        let message: Message = Message::new(self.update_cache_from_singleton, &self.req_data);
-        match queue_id {
-            Some(qid) => {
-                if self
-                    .enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap()))
-                    .is_err()
-                {
-                    warn!(
-                        "ctxt {}: Reporting to singleton failed: MQ with specified id not found",
-                        self.context_id
-                    );
-                    return false;
-                }
-            }
-            None => {
-                warn!(
-                    "ctxt {}: Reporting to singleton failed: Queue id not provided",
-                    self.context_id
-                );
-                return false;
-            }
+    fn report_to_singleton(&self, qid: u32, req_time: &Duration) -> bool {
+        let message: Message =
+            Message::new(self.update_cache_from_singleton, &self.req_data, req_time);
+        if let Err(e) = self.enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap()))
+        {
+            warn!(
+                "ctxt {}: enqueuing to message queue failed: {:?}",
+                self.context_id, e
+            );
+            return false;
         }
         true
     }
 
-    fn handle_cache_hit(&mut self, app: &RefCell<Application>) -> Result<(), CacheHitError> {
-        let queue_id = self.resolve_shared_queue(VM_ID, QUEUE_NAME);
+    fn handle_cache_hit(&mut self, app: &mut Application) -> Result<(), CacheHitError> {
+        let queue_id = self
+            .resolve_shared_queue(VM_ID, QUEUE_NAME)
+            .ok_or(CacheHitError::MQNotFound)?;
 
         let current_time = self.get_current_time().duration_since(UNIX_EPOCH)?;
 
-        let rate_limited: bool = self.is_rate_limited(app, &current_time)?;
-        if rate_limited {
-            info!("ctxt {}: request is rate-limited", self.context_id);
-            // TODO: Add how many similar requests can be accepted.
-            self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
-        } else {
-            info!("ctxt {}: request is allowed to pass", self.context_id);
-            if !self.report_to_singleton(queue_id) {
-                // TODO: Handle MQ failure here
-                // Update local cache
-                // Report to 3scale and get new state using authrep endpoint
+        add_hierarchy_to_metrics(&app.metric_hierarchy, &mut self.req_data.metrics);
+        match limit_check_and_update_application(&self.req_data, app, &current_time) {
+            Ok(()) => {
+                // request is not rate-limited and application is updated
+                if !set_application_to_cache(&self.cache_key.as_string(), &app, true, None) {
+                    self.update_cache_from_singleton = true;
+                }
+                info!(
+                    "ctxt {}: request is allowed to pass the filter",
+                    self.context_id
+                );
+                if !self.report_to_singleton(queue_id, &current_time) {
+                    // TODO: Handle MQ failure here
+                    // Update local cache
+                    // Report to 3scale and get new state using authrep endpoint
+                }
+                self.resume_http_request();
             }
-            self.resume_http_request()
+            Err(UpdateMetricsError::RateLimited) => {
+                info!("ctxt {}: request is rate-limited", self.context_id);
+                // TODO: add how many similar requests can be accepted.
+                self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
+            }
+            Err(e) => return Err(CacheHitError::MetricsCheckFail(e)),
         }
         Ok(())
-    }
-
-    fn is_rate_limited(
-        &mut self,
-        app: &RefCell<Application>,
-        current_time: &Duration,
-    ) -> Result<bool, RateLimitError> {
-        for (metric, hits) in self.req_data.metrics.borrow().iter() {
-            if let Some(usage_report) = app.borrow_mut().local_state.get_mut(metric) {
-                let mut period = &mut usage_report.period_window;
-
-                if period.window != Period::Eternity && period.end < *current_time {
-                    // taking care of period window expiration
-                    let time_diff = current_time
-                        .checked_sub(period.start)
-                        .ok_or(RateLimitError::DurationOverflow)?;
-                    let num_windows = time_diff.as_secs() / period.window.as_secs();
-                    let seconds_to_add = num_windows * period.window.as_secs();
-
-                    // set to new period window
-                    period.start = period
-                        .start
-                        .checked_add(Duration::from_secs(seconds_to_add))
-                        .ok_or(RateLimitError::DurationOverflow)?;
-
-                    period.end = period
-                        .end
-                        .checked_add(Duration::from_secs(seconds_to_add))
-                        .ok_or(RateLimitError::DurationOverflow)?;
-
-                    // reset left hits back to max value
-                    usage_report.left_hits = usage_report.max_value;
-
-                    // TODO : Use the update_metric()
-                    if usage_report.left_hits < *hits {
-                        return Ok(true);
-                    }
-                    usage_report.left_hits -= *hits;
-                }
-            }
-        }
-        if !set_application_to_cache(&self.cache_key.as_string(), &app.borrow(), true, None) {
-            self.update_cache_from_singleton = true;
-        }
-        Ok(false)
     }
 
     fn handle_auth_response(
@@ -299,7 +251,7 @@ impl CacheFilter {
             .iter()
             .map(|app_key| AppKey::from(app_key.as_ref()))
             .collect::<Vec<_>>();
-        let app = Application {
+        let mut app = Application {
             app_id: app_identifier,
             service_id,
             local_state: state,
@@ -309,7 +261,7 @@ impl CacheFilter {
 
         set_application_to_cache(&self.cache_key.as_string(), &app, true, None);
 
-        match self.handle_cache_hit(&RefCell::new(app)) {
+        match self.handle_cache_hit(&mut app) {
             Ok(()) => Ok(()),
             Err(e) => Err(AuthResponseError::CacheHitErr(e)),
         }
@@ -361,7 +313,7 @@ impl Context for CacheFilter {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                     Ok(Authorization::Status(response)) => {
-                        if response.is_authorized() {
+                        if response.usage_reports().is_some() {
                             if let Err(e) = self.handle_auth_response(&response) {
                                 warn!(
                                     "ctxt {}: handling auth response failed: {:?}",

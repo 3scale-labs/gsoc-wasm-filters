@@ -23,7 +23,7 @@ use threescale::{
         ServiceToken, ThreescaleData, UsageReport,
     },
     upstream::*,
-    utils::update_metrics,
+    utils::limit_check_and_update_application,
 };
 use threescalers::{http::Request, response::Authorization};
 // QUEUE_NAME should be the same as the one in cache filter.
@@ -32,9 +32,6 @@ const RATE_LIMIT_STATUS: &str = "409";
 
 #[derive(Error, Debug)]
 pub enum SingletonServiceError {
-    #[error("Updating metrics failed for application with application key: {0}")]
-    UpdateMetricsFailure(String),
-
     #[error("Error retrieving local cache entry for cache key: {0}")]
     GetCacheFailure(String),
 
@@ -146,8 +143,10 @@ impl RootContext for SingletonService {
                             message_received
                         );
                         let threescale: ThreescaleData = message_received.data;
+                        let req_time: Duration = message_received.req_time;
                         if message_received.update_cache_from_singleton {
-                            self.update_application_cache(&threescale).unwrap();
+                            self.update_application_cache(&threescale, &req_time)
+                                .unwrap();
                         }
                         // TODO : Handle delta store update failure.
                         self.cache_keys
@@ -213,24 +212,21 @@ impl Context for SingletonService {
 impl SingletonService {
     /// update_application_cache method updates the local application cache if the cache update
     /// fails from the cache filter for a particular request.
-    fn update_application_cache(&self, threescale: &ThreescaleData) -> Result<(), anyhow::Error> {
+    fn update_application_cache(
+        &self,
+        threescale: &ThreescaleData,
+        req_time: &Duration,
+    ) -> Result<(), anyhow::Error> {
         let cache_key = CacheKey::from(&threescale.service_id, &threescale.app_id);
         match get_application_from_cache(&cache_key) {
             Ok((mut application, _)) => {
-                let is_updated: bool = update_metrics(threescale, &mut application);
-                if is_updated {
-                    if !set_application_to_cache(&cache_key.as_string(), &application, false, None)
-                    {
-                        anyhow::bail!(SingletonServiceError::SetCacheFailure(
-                            cache_key.as_string()
-                        ))
-                    }
-                    Ok(())
-                } else {
-                    anyhow::bail!(SingletonServiceError::UpdateMetricsFailure(
-                        threescale.app_id.as_ref().to_string(),
+                limit_check_and_update_application(threescale, &mut application, req_time)?;
+                if !set_application_to_cache(&cache_key.as_string(), &application, false, None) {
+                    anyhow::bail!(SingletonServiceError::SetCacheFailure(
+                        cache_key.as_string()
                     ))
                 }
+                Ok(())
             }
             Err(_) => {
                 info!("No app in shared data");
