@@ -1,3 +1,4 @@
 target/*
 deployments/docker-compose/*.wasm
 .vscode/
+integration-tests/artifacts/*

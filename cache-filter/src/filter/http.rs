@@ -15,8 +15,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use std::vec;
 use threescale::{
     proxy::{
-        get_app_id_from_cache, get_application_from_cache, set_app_id_to_cache,
-        set_application_to_cache, CacheError, CacheKey,
+        get_app_id_from_cache, get_application_from_cache, set_app_id_to_cache, CacheError,
+        CacheKey,
     },
     structs::*,
     utils::*,
@@ -26,7 +26,7 @@ use threescalers::response::{Authorization, AuthorizationStatus};
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 enum CacheHitError {
     #[error("duration since time later than self")]
     TimeConversionErr(#[from] std::time::SystemTimeError),
@@ -34,6 +34,8 @@ enum CacheHitError {
     MetricsCheckFail(#[from] UpdateMetricsError),
     #[error("unable to resolve message queue with specified vm_id and q_name")]
     MQNotFound,
+    #[error("failed to fetch the app during app_set retries")]
+    AppFetchFail(#[from] CacheError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -111,10 +113,10 @@ impl HttpContext for CacheFilter {
         }
 
         match get_application_from_cache(&self.cache_key) {
-            Ok((mut app, _)) => {
+            Ok((mut app, cas)) => {
                 info!("ctxt {}: cache hit", context_id);
 
-                match self.handle_cache_hit(&mut app) {
+                match self.handle_cache_hit(&mut app, cas) {
                     Ok(()) => Action::Continue,
                     Err(e) => {
                         warn!("ctxt {}: cache hit flow failed: {:#?}", context_id, e);
@@ -148,37 +150,72 @@ impl CacheFilter {
         true
     }
 
-    fn handle_cache_hit(&mut self, app: &mut Application) -> Result<(), CacheHitError> {
+    // app_cas can be zero if fetched for the first from 3scale
+    fn handle_cache_hit(
+        &mut self,
+        app: &mut Application,
+        mut app_cas: u32,
+    ) -> Result<(), CacheHitError> {
         let queue_id = self
             .resolve_shared_queue(VM_ID, QUEUE_NAME)
             .ok_or(CacheHitError::MQNotFound)?;
 
         let current_time = self.get_current_time().duration_since(UNIX_EPOCH)?;
+        let mut updated_cache = false;
+        let mut rate_limited = false;
+        let max_tries = self.config.max_tries;
 
         add_hierarchy_to_metrics(&app.metric_hierarchy, &mut self.req_data.metrics);
-        match limit_check_and_update_application(&self.req_data, app, &current_time) {
-            Ok(()) => {
-                // request is not rate-limited and application is updated
-                if !set_application_to_cache(&self.cache_key.as_string(), &app, true, None) {
-                    self.update_cache_from_singleton = true;
+
+        // In case of CAS mismatch, new application needs to be fetched and modified again.
+        for num_try in 1..max_tries {
+            match limit_check_and_update_application(&self.req_data, app, app_cas, &current_time) {
+                Ok(()) => {
+                    // App is not rate-limited and updated in cache.
+                    info!(
+                        "ctxt {}: request is allowed to pass the filter",
+                        self.context_id
+                    );
+                    if !self.report_to_singleton(queue_id, &current_time) {
+                        // TODO: Handle MQ failure here
+                        // Update local cache
+                        // Report to 3scale and get new state using authrep endpoint
+                    }
+                    updated_cache = true;
+                    self.resume_http_request();
                 }
-                info!(
-                    "ctxt {}: request is allowed to pass the filter",
-                    self.context_id
-                );
-                if !self.report_to_singleton(queue_id, &current_time) {
-                    // TODO: Handle MQ failure here
-                    // Update local cache
-                    // Report to 3scale and get new state using authrep endpoint
+                Err(UpdateMetricsError::RateLimited) => {
+                    info!("ctxt {}: request is rate-limited", self.context_id);
+                    self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
+                    // no need to retry if already rate-limted
+                    rate_limited = true;
+                    break;
                 }
-                self.resume_http_request();
+                Err(UpdateMetricsError::CacheUpdateFail) => {
+                    info!(
+                        "ctxt {}: try #{} failed to set application to cache",
+                        self.context_id, num_try
+                    );
+                    if num_try < max_tries {
+                        match get_application_from_cache(&self.cache_key) {
+                            Ok((new_app, cas)) => {
+                                *app = new_app;
+                                app_cas = cas;
+                            }
+                            Err(e) => return Err(CacheHitError::AppFetchFail(e)),
+                        }
+                        continue;
+                    }
+                }
+                Err(e) => return Err(CacheHitError::MetricsCheckFail(e)),
             }
-            Err(UpdateMetricsError::RateLimited) => {
-                info!("ctxt {}: request is rate-limited", self.context_id);
-                // TODO: add how many similar requests can be accepted.
-                self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
-            }
-            Err(e) => return Err(CacheHitError::MetricsCheckFail(e)),
+        }
+        // App is not rate-limited and changes are not reflected in the cache yet.
+        // Singleton will try to overwrite and in the mean time till singleton receives
+        // the message, hopefully, contention will reduce.
+        if !updated_cache && !rate_limited {
+            self.update_cache_from_singleton = true;
+            self.resume_http_request();
         }
         Ok(())
     }
@@ -261,9 +298,9 @@ impl CacheFilter {
             app_keys: Some(keys),
         };
 
-        set_application_to_cache(&self.cache_key.as_string(), &app, true, None);
-
-        match self.handle_cache_hit(&mut app) {
+        // note: we have made an assumption that there is not contention with other threads
+        // since it's a fresh application and should not be present in the cache.
+        match self.handle_cache_hit(&mut app, 0) {
             Ok(()) => Ok(()),
             Err(e) => Err(AuthResponseError::CacheHitErr(e)),
         }
