@@ -168,7 +168,7 @@ impl CacheFilter {
         add_hierarchy_to_metrics(&app.metric_hierarchy, &mut self.req_data.metrics);
 
         // In case of CAS mismatch, new application needs to be fetched and modified again.
-        for num_try in 1..max_tries {
+        for num_try in 1..(max_tries + 1) {
             match limit_check_and_update_application(&self.req_data, app, app_cas, &current_time) {
                 Ok(()) => {
                     // App is not rate-limited and updated in cache.
@@ -352,7 +352,7 @@ impl Context for CacheFilter {
             Some(bytes) => {
                 match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                     Ok(Authorization::Status(response)) => {
-                        if response.usage_reports().is_some() {
+                        if response.is_authorized() || response.usage_reports().is_some() {
                             if let Err(e) = self.handle_auth_response(&response) {
                                 warn!(
                                     "ctxt {}: handling auth response failed: {:?}",
