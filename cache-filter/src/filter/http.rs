@@ -168,7 +168,7 @@ impl CacheFilter {
         add_hierarchy_to_metrics(&app.metric_hierarchy, &mut self.req_data.metrics);
 
         // In case of CAS mismatch, new application needs to be fetched and modified again.
-        for num_try in 1..(max_tries + 1) {
+        for num_try in 0..max_tries {
             match limit_check_and_update_application(&self.req_data, app, app_cas, &current_time) {
                 Ok(()) => {
                     // App is not rate-limited and updated in cache.
@@ -193,8 +193,10 @@ impl CacheFilter {
                 }
                 Err(UpdateMetricsError::CacheUpdateFail) => {
                     info!(
-                        "ctxt {}: try #{} failed to set application to cache",
-                        self.context_id, num_try
+                        "ctxt {}: try ({} out of {}): failed to set application to cache",
+                        self.context_id,
+                        (num_try as u64) + 1,
+                        max_tries
                     );
                     if num_try < max_tries {
                         match get_application_from_cache(&self.cache_key) {
