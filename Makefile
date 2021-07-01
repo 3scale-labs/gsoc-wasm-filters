@@ -70,4 +70,5 @@ integration:
 run:
 	@echo "> Starting services"
 	docker-compose -f deployments/docker-compose/docker-compose.yaml up --build
+
 	
