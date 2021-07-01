@@ -1,0 +1,3 @@
+[submodule "threescale-wasm-auth"]
+	path = threescale-wasm-auth
+	url = https://github.com/3scale/threescale-wasm-auth
