@@ -114,7 +114,7 @@ curl -X GET 'localhost:9095/' -H 'x-app-id: fcf4db29' -H 'x-app-key: 9a0435ee68f
 curl -X GET 'localhost:9095/?api_key=46de54605a1321aa3838480c5fa91bcc'
 ```
 
-### Writting integration tests
+## Writting integration tests
 
 Integration tests are written in golang and executed by starting related services in docker containers using docker-compose. 
 Helper methods are implemented in `main.go` file in the integration-tests. Integration tests can be implemented in 2 ways.
@@ -123,16 +123,55 @@ Helper methods are implemented in `main.go` file in the integration-tests. Integ
 
 Here `docker-compose.yaml` and `Dockerfile` are not needed since it uses already available common template. Only `envoy.yaml` is required.
 First use the `BuildnStartContainers()` helper method to start docker containers by passing the path of the required
-`envoy.yaml`. eg: `BuildnStartContainers("./configs/app-id/envoy.yaml")`. Then implement related testing logic and use `BuildStopContainers()` to stop
+`envoy.yaml`. eg: `BuildnStartContainers("./configs/app-id/envoy.yaml")`. Then implement related testing logic using testify suite and use `BuildStopContainers()` to stop
 the docker containers. Examples can be found in `app_id_test.go`.
 
 2. For special cases where a special docker-compose configuration is required. Need to provide `docker-compose.yaml`, `Dockerfile` and `envoy.yaml`.
 
 First create a directory in the configs folder and add related `docker-compose.yaml`, `Dockerfile` and `envoy.yaml`. Then use `StartContainers()` helper to
 start docker containers by providing the related configuration folder path. eg: `StartContainers("./configs/app-id/docker-compose.yaml")`. Then implement related
-testing logic and use `StopContainers("")` to stop the docker containers by providing the path of the related config folder. eg: `StopContainers("./configs/app-id/docker-compose.yaml")`. Examples can be found in `app_id_test.go`.
+testing logic using testify suite and use `StopContainers("")` to stop the docker containers by providing the path of the related config folder. eg: `StopContainers("./configs/app-id/docker-compose.yaml")`. Examples can be found in `app_id_test.go`.
 
 > For all the tests, it is important to add a delay after container initialization and testing in order to provide time for services to be available when running inside hosts with less performance, CI/CD pipelines.
+
+**Using testify suite**
+
+For each group of related independant tests, a test suite can be created as follows.
+
+```go
+type ExampleTestSuite struct {
+    suite.Suite
+}
+```
+
+For each group, `SetupSuite` method can be used to implement suite initialization like starting services using docker-compose, application, service initialization etc.
+
+```go
+func (suite *AppCredentialTestSuite) SetupSuite() {
+	// Initialization logic goes here
+}
+```
+
+Also for advance testing if each test requires some initialization, `SetupTest()`, `BeforeTest()` can be used.
+The test cases can be implemented by implementing a test func for each case.
+
+```go
+func (suite *ExampleTestSuite) TestExample() {
+    // Test logic goes here
+    assert.Equal(suite.T(), 123, 123)
+}
+
+```
+
+Finally we can run a clean up function using `TearDownSuite()`. Here we can stop the services that runs in docker.
+
+```go
+func (suite *AppCredentialTestSuite) TearDownSuite() {
+  // Clean up logic goes here
+}
+```
+Also for advanced testing cases, `TearDownTest()` can be used to clean up after every test.
+
 
 <!-- LICENSE -->
 ## License
