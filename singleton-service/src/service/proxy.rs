@@ -23,7 +23,7 @@ use threescale::{
         ServiceToken, ThreescaleData, UsageReport,
     },
     upstream::*,
-    utils::limit_check_and_update_application,
+    utils::{limit_check_and_update_application, UpdateMetricsError},
 };
 use threescalers::{http::Request, response::Authorization};
 // QUEUE_NAME should be the same as the one in cache filter.
@@ -52,6 +52,9 @@ pub enum SingletonServiceError {
 
     #[error("Conversion from i64 time to u64 duration failed")]
     NegativeTimeErr,
+
+    #[error("limit_check_and_update_application failed")]
+    UpdateMetricsFail(String),
 }
 
 #[no_mangle]
@@ -219,14 +222,23 @@ impl SingletonService {
     ) -> Result<(), anyhow::Error> {
         let cache_key = CacheKey::from(&threescale.service_id, &threescale.app_id);
         match get_application_from_cache(&cache_key) {
-            Ok((mut application, _)) => {
-                limit_check_and_update_application(threescale, &mut application, req_time)?;
-                if !set_application_to_cache(&cache_key.as_string(), &application, false, None) {
-                    anyhow::bail!(SingletonServiceError::SetCacheFailure(
-                        cache_key.as_string()
-                    ))
+            Ok((mut application, cas)) => {
+                match limit_check_and_update_application(
+                    threescale,
+                    &mut application,
+                    cas,
+                    req_time,
+                ) {
+                    Ok(()) => Ok(()),
+                    Err(UpdateMetricsError::CacheUpdateFail) => {
+                        anyhow::bail!(SingletonServiceError::SetCacheFailure(
+                            cache_key.as_string()
+                        ))
+                    }
+                    Err(e) => {
+                        anyhow::bail!(SingletonServiceError::UpdateMetricsFail(e.to_string()))
+                    }
                 }
-                Ok(())
             }
             Err(_) => {
                 info!("No app in shared data");
@@ -402,8 +414,7 @@ impl SingletonService {
                     set_application_to_cache(
                         CacheKey::from(&service_id, &app_id).as_string().as_ref(),
                         &app,
-                        false,
-                        None,
+                        0,
                     );
                     Ok(())
                 } else {

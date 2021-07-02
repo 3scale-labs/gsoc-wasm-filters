@@ -1,3 +1,4 @@
+use crate::proxy::{set_application_to_cache, CacheKey};
 use crate::structs::{Application, Hierarchy, Metrics, Period, ThreescaleData};
 use std::time::Duration;
 
@@ -7,6 +8,8 @@ pub enum UpdateMetricsError {
     DurationOverflow,
     #[error("request is rate-limited")]
     RateLimited,
+    #[error("application set was unsuccessful")]
+    CacheUpdateFail,
 }
 
 // updates application to reflect consumed quota if not rate-limited
@@ -14,6 +17,7 @@ pub enum UpdateMetricsError {
 pub fn limit_check_and_update_application(
     data: &ThreescaleData,
     app: &mut Application,
+    app_cas: u32,
     current_time: &Duration,
 ) -> Result<(), UpdateMetricsError> {
     for (metric, hits) in data.metrics.borrow().iter() {
@@ -49,6 +53,12 @@ pub fn limit_check_and_update_application(
             }
             usage_report.left_hits -= *hits;
         }
+    }
+
+    // request is not rate-limited and will be set to cache
+    let cache_key = CacheKey::from(&app.service_id, &app.app_id);
+    if !set_application_to_cache(&cache_key.as_string(), &app, app_cas) {
+        return Err(UpdateMetricsError::CacheUpdateFail);
     }
     Ok(())
 }

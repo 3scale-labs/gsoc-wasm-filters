@@ -1,5 +1,5 @@
 use crate::structs::{AppId, AppIdentifier, Application, ServiceId, UserKey};
-use log::info;
+use log::{debug, info};
 use proxy_wasm::hostcalls::{get_shared_data, set_shared_data};
 use std::hash::{Hash, Hasher};
 
@@ -88,38 +88,19 @@ pub fn set_app_id_to_cache(user_key: &UserKey, app_id: &AppId) -> Result<(), Cac
     Ok(())
 }
 
-fn get_cas_from_cache(key: &str) -> Option<u32> {
-    let (_b, cas) = get_shared_data(&key).unwrap();
-    cas
-}
-
-// Returns false on set failure
-pub fn set_application_to_cache(
-    key: &str,
-    app: &Application,
-    overwrite: bool,
-    num_tries: Option<u32>,
-) -> bool {
-    let mut cas = None; // Default case is set to overwrite
-
-    if !overwrite {
-        cas = get_cas_from_cache(key);
-    }
-
-    for num_try in 1..(1 + num_tries.unwrap_or(1)) {
-        info!("try #{}: Setting application with key: {}", num_try, key);
-        match set_shared_data(
-            &key,
-            Some(&bincode::serialize::<Application>(&app).unwrap()),
-            cas,
-        ) {
-            Ok(()) => return true,
-            Err(e) => info!(
-                "try #{}: Set operation failed for key: {} due to: {:?}",
-                num_try, key, e
-            ),
+// if cas is 0, cache record is overwritten
+// returns false on set failure
+pub fn set_application_to_cache(key: &str, app: &Application, cas: u32) -> bool {
+    info!("setting application with key: {}", key);
+    match set_shared_data(
+        &key,
+        Some(&bincode::serialize::<Application>(&app).unwrap()),
+        Some(cas),
+    ) {
+        Ok(()) => true,
+        Err(e) => {
+            debug!("set operation failed for key: {} : {:?}", key, e);
+            false
         }
-        cas = get_cas_from_cache(key);
     }
-    false
 }
