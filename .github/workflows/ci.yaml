@@ -101,6 +101,14 @@ jobs:
           go get -u golang.org/x/lint/golint
           go get github.com/stretchr/testify/assert
 
+      - name: Running apisonator
+        run: |
+          docker run -p 6379:6379 -d --name my-redis redis --databases 2
+          docker run -e CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0 \
+            -e CONFIG_REDIS_PROXY=redis://redis:6379/1 -e CONFIG_INTERNAL_API_USER=root \
+            -e CONFIG_INTERNAL_API_PASSWORD=root -p 3000:3000 -d --link my-redis:redis \
+            quay.io/3scale/apisonator 3scale_backend start
+
       - name: Building application
         run: make build
 
