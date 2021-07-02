@@ -1,3 +1,4 @@
+use crate::configuration::delta::{DeltaStoreConfig, FlushMode};
 use crate::configuration::service::ServiceConfig;
 use crate::service::{
     auth::*,
@@ -68,8 +69,8 @@ pub fn _start() {
             delta_store: DeltaStore {
                 last_update: None,
                 request_count: 0,
-                capacity: 2, // TODO : Re-implement config parsing after finalizing the config structs.
                 deltas: HashMap::new(),
+                config: DeltaStoreConfig::default(),
             },
             cache_keys: HashMap::new(),
         })
@@ -117,6 +118,8 @@ impl RootContext for SingletonService {
             Ok(config) => {
                 debug!("configuring {}: {:?}", self.context_id, config);
                 self.config = config;
+                self.set_tick_period(self.config.delta_store_config.periodical_flush);
+                self.delta_store.config = self.config.delta_store_config.clone();
                 true
             }
             Err(e) => {
@@ -173,13 +176,22 @@ impl RootContext for SingletonService {
         }
     }
 
-    /// When on_tick gets triggered, is_flush_required will check whether delta store flush is required or not.
     /// Delta store flush is required in case of a low traffic where it takes a long time to fill the delta store
     /// container.
+    // TODO: Consider requirements of a dynamic tick and timestamp based flush if it makes a significant
+    // improvement.
     fn on_tick(&mut self) {
-        // This is just a demo of adding delta entries to delta store and flushing them.
-        info!("onTick triggerd. starting test scenario....");
-        // TODO : Perform periodical cache flush based on timestamp.
+        info!(
+            "onTick triggerd. Current tick duration: {:?}",
+            self.config.delta_store_config.periodical_flush
+        );
+        // Perform cache update based on the cache flush type defined by the user. For Default,
+        // other than the container limit this will trigger the cache update.
+        // For periodical only this onTick method will trigger the cache update.
+        // For ContainerLimit, no effect here.
+        if self.delta_store.config.flush_mode != FlushMode::ContainerLimit {
+            self.flush_local_cache()
+        }
     }
 }
 
@@ -292,6 +304,7 @@ impl SingletonService {
     ) -> HashMap<String, HashMap<AppIdentifier, HashMap<String, u64>>> {
         let deltas_cloned = self.delta_store.deltas.clone();
         self.delta_store.deltas.clear();
+        self.delta_store.request_count = 0;
         assert!(self.delta_store.deltas.is_empty());
         deltas_cloned
     }

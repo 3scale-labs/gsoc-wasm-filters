@@ -1,3 +1,4 @@
+use crate::configuration::delta::{DeltaStoreConfig, FlushMode};
 use chrono::offset::Utc;
 use chrono::DateTime;
 use std::collections::HashMap;
@@ -21,10 +22,10 @@ pub struct DeltaStore {
     // Represents the request count. Gets incremented by 1 for each request passing
     // through the proxy. Used together with the capacity attribute to implement a
     // container filling mechansim for cache flush in case of high network traffic scenarios.
-    pub request_count: u32,
+    pub request_count: u64,
 
-    // Represents the capacity of the cache container.
-    pub capacity: u32,
+    // DeltaStoreConfig contains all the configurations related for delta store.
+    pub config: DeltaStoreConfig,
 }
 
 /// DeltaStoreState represents the state of the delta store. Singleton service uses this
@@ -69,9 +70,13 @@ impl DeltaStore {
                 self.deltas.insert(delta_key, usages);
             }
         }
-        self.request_count += 1;
-        if self.request_count == self.capacity {
-            Ok(DeltaStoreState::Flush)
+        if self.config.flush_mode != FlushMode::Periodical {
+            self.request_count += 1;
+            if self.request_count == self.config.capacity {
+                Ok(DeltaStoreState::Flush)
+            } else {
+                Ok(DeltaStoreState::Ok)
+            }
         } else {
             Ok(DeltaStoreState::Ok)
         }

@@ -1,5 +1,4 @@
 use crate::configuration::delta::DeltaStoreConfig;
-use crate::configuration::test::TestConfiguration;
 use serde::Deserialize;
 use std::time::Duration;
 use threescale::upstream::Upstream;
@@ -12,9 +11,6 @@ pub struct ServiceConfig {
 
     /// Delta store configuration.
     pub delta_store_config: DeltaStoreConfig,
-
-    /// Temporary test configuration.
-    pub test_config: Option<TestConfiguration>,
 }
 
 impl Default for ServiceConfig {
@@ -26,7 +22,6 @@ impl Default for ServiceConfig {
                 timeout: Duration::from_millis(5000),
             },
             delta_store_config: DeltaStoreConfig::default(),
-            test_config: None,
         }
     }
 }
