@@ -100,7 +100,7 @@ jobs:
           go version
           go get -u golang.org/x/lint/golint
           go get github.com/stretchr/testify/assert
-
+      
       - name: Building application
         run: make build
 

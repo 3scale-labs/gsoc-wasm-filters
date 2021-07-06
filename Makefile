@@ -36,6 +36,8 @@ clean:
 	rm ./deployments/docker-compose/singleton_service.wasm
 	rm ./deployments/docker-compose/cache_filter.wasm
 	rm ./deployments/docker-compose/threescale_wasm_auth.wasm
+	docker rm my-redis -f
+	docker rm apisonator -f
 
 clean-service:
 	@echo "> Cleaning singleton_service build artifacts"
@@ -49,6 +51,10 @@ clean-auth:
 	@echo "> Cleaning threescale_wasm_auth build artifacts"
 	rm ./deployments/docker-compose/threescale_wasm_auth.wasm
 
+clean-apisonator:
+	docker rm my-redis -f
+	docker rm apisonator -f
+
 auth: ## Build threescale_wasm_auth filter. 
 	@echo "> Building threescale_wasm_auth filter"
 	git submodule update --init
@@ -57,7 +63,14 @@ auth: ## Build threescale_wasm_auth filter.
 	make build
 	cp threescale-wasm-auth/target/wasm32-unknown-unknown/$(BUILD)/threescale_wasm_auth.wasm deployments/docker-compose/threescale_wasm_auth.wasm
 
-integration:
+apisonator: ## Runs apisonator and redis container
+	docker run -p 6379:6379 -d --name my-redis redis --databases 2
+	docker run -e CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0 \
+            -e CONFIG_REDIS_PROXY=redis://redis:6379/1 -e CONFIG_INTERNAL_API_USER=root \
+            -e CONFIG_INTERNAL_API_PASSWORD=root -p 3000:3000 -d --link my-redis:redis \
+            --name apisonator quay.io/3scale/apisonator 3scale_backend start
+
+integration: apisonator
 	@echo "> Starting integration tests"
 	mkdir -p integration-tests/artifacts
 	cp deployments/docker-compose/cache_filter.wasm integration-tests/artifacts/cache_filter.wasm
@@ -66,6 +79,8 @@ integration:
 	go clean -testcache
 	go test -p 1 ./... -v
 	rm -rf integration-tests/artifacts
+	docker rm my-redis -f
+	docker rm apisonator -f
 
 run:
 	@echo "> Starting services"
