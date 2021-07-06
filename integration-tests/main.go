@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 )
 
 func main() {
@@ -22,6 +23,7 @@ func StartContainers(composePath string) error {
 		fmt.Printf("Error: %v", err)
 		return err
 	}
+	time.Sleep(10*time.Second)
 	return nil
 }
 

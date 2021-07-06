@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"errors"
 	"bytes"
+	"io"
 )
 
 // These credentials should match those mentioned in the ci.yaml.
@@ -15,7 +16,7 @@ const (
 	PORT = "3000"
 	IP_ADDRESS = "0.0.0.0"
 	INTERNAL_PREFIX = "/internal"
-	INTERNAL_URL = "http://"+INTERNAL_USER+":"+INTERNAL_PASS+"@"+IP_ADDRESS+PORT+INTERNAL_PREFIX
+	INTERNAL_URL = "http://"+INTERNAL_USER+":"+INTERNAL_PASS+"@"+IP_ADDRESS+":"+PORT+INTERNAL_PREFIX
 )
 
 type Period string
@@ -296,7 +297,11 @@ func DeleteUsageLimits(service_id string, plan_id string, metrics *[]Metric) err
 
 func executeHttpRequest(method string, url string, data *[]byte) (*http.Response, error) {
 	client := &http.Client{}
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(*data))
+	var body io.Reader
+	if data != nil {
+		body = bytes.NewBuffer(*data)
+	}
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		fmt.Printf("Error while creating HTTP request: %v", err)
 		return nil, err
@@ -306,5 +311,6 @@ func executeHttpRequest(method string, url string, data *[]byte) (*http.Response
 		fmt.Printf("Error sending the HTTP request: %v", err)
 		return nil, err
 	}
+	defer res.Body.Close()
 	return res, nil
 }

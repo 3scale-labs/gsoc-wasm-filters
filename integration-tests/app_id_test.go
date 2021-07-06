@@ -104,8 +104,8 @@ func (suite *AppCredentialTestSuite) TestAppIdSuccess() {
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
 		"Host":      []string{"localhost"},
-		"x-app-id":  []string{suite.app_id},
-		"x-app-key": []string{suite.app_key},
+		"x-app-id":  []string{"23f118be"},
+		"x-app-key": []string{"44d128988763aee1b0ff0691f9686f7e"},
 	}
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
