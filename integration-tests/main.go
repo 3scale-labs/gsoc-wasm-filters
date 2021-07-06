@@ -18,8 +18,7 @@ func StartContainers(composePath string) error {
 	cmd := exec.Command("docker-compose", "-f", composePath, "up", "--build", "-d")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
 		return err
 	}
@@ -31,8 +30,7 @@ func StopContainers(composePath string) error {
 	cmd := exec.Command("docker-compose", "-f", composePath, "down")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
 		return err
 	}
