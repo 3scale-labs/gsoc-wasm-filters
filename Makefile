@@ -64,8 +64,15 @@ integration:
 	cp deployments/docker-compose/singleton_service.wasm integration-tests/artifacts/singleton_service.wasm
 	cp deployments/docker-compose/threescale_wasm_auth.wasm integration-tests/artifacts/threescale_wasm_auth.wasm
 	go clean -testcache
+	docker run -p 6379:6379 -d --name my-redis redis --databases 2
+	docker run -e CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0 \
+            -e CONFIG_REDIS_PROXY=redis://redis:6379/1 -e CONFIG_INTERNAL_API_USER=root \
+            -e CONFIG_INTERNAL_API_PASSWORD=root -p 3000:3000 -d --link my-redis:redis \
+            --name apisonator quay.io/3scale/apisonator 3scale_backend start
 	go test -p 1 ./... -v
 	rm -rf integration-tests/artifacts
+	docker rm my-redis
+	docker rm apisonator
 
 run:
 	@echo "> Starting services"
