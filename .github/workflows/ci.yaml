@@ -99,7 +99,18 @@ jobs:
         run: |
           go version
           go get -u golang.org/x/lint/golint
-          go get github.com/stretchr/testify/assert
+          go get github.com/stretchr/testify
+
+      # Run gofmt to check the formatting of the go files.    
+      - name: Run Fmt
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then exit 1; fi
+          
+      # Run vet & lint on the code
+      - name: Run vet & lint
+        run: |
+          go vet ./...
+          golint -set_exit_status=1 ./...
       
       - name: Building application
         run: make build
