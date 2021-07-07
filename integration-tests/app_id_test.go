@@ -12,20 +12,18 @@ import (
 
 type AppCredentialTestSuite struct {
 	suite.Suite
-	service_id string
+	service_id    string
 	service_token string
-	app_id string
-	app_key string
-	user_key string
-	plan_id string
-	metrics []Metric
+	app_id        string
+	app_key       string
+	user_key      string
+	plan_id       string
+	metrics       []Metric
 }
 
 func (suite *AppCredentialTestSuite) SetupSuite() {
-	if err := StartContainers("./configs/app-id/docker-compose.yaml"); err != nil {
-		fmt.Printf("Error: %v", err)
-		suite.Errorf(err, "Error starting docker-compose: %v")
-	}
+	err := StartProxy("./")
+	require.Nilf(suite.T(), err, "Error starting docker-compose: %v", err)
 	// Initializing 3scale backend state
 	suite.app_id = "test_app_id"
 	suite.app_key = "test_app_key"
@@ -33,12 +31,12 @@ func (suite *AppCredentialTestSuite) SetupSuite() {
 	suite.service_id = "test_service_id"
 	suite.plan_id = "test_plan_id"
 	suite.service_token = "test_service_token"
-	suite.metrics = []Metric {
-		Metric {"hits", "1", []UsageLimit {
-			{ Day, 10000,},
+	suite.metrics = []Metric{
+		Metric{"hits", "1", []UsageLimit{
+			{Day, 10000},
 		}},
-		Metric {"rq", "2", []UsageLimit {
-			{ Month, 10000, },
+		Metric{"rq", "2", []UsageLimit{
+			{Month, 10000},
 		}},
 	}
 	if err := CreateService(suite.service_id, suite.service_token); err != nil {
@@ -92,9 +90,9 @@ func (suite *AppCredentialTestSuite) TearDownSuite() {
 		suite.Errorf(err, "Failed to delete usage limits")
 	}
 	fmt.Println("Stopping AppCredentialTestSuite")
-	errStop := StopContainers("./configs/app-id/docker-compose.yaml")
-	if errStop != nil {
-		fmt.Printf("Error stopping : %v", errStop)
+
+	if err := StopProxy(); err != nil {
+		fmt.Printf("Error stoping docker: %v", err)
 	}
 }
 
