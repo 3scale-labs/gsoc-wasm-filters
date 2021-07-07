@@ -44,8 +44,6 @@ enum AuthResponseError {
     CacheHitErr(#[from] CacheHitError),
     #[error("conversion from i64 time to u64 duration failed")]
     NegativeTimeErr,
-    #[error("usage reports from 3scale auth response are missing")]
-    UsageNotFound,
     #[error("list app keys from 3scale auth response are missing")]
     ListKeysMiss,
     #[error("app id field is missing from list keys extension response")]
@@ -228,9 +226,10 @@ impl CacheFilter {
     ) -> Result<(), AuthResponseError> {
         // Form application struct from the response
         let mut state = HashMap::new();
-        let reports = response
-            .usage_reports()
-            .ok_or(AuthResponseError::UsageNotFound)?;
+        let mut reports = &Vec::<threescalers::response::UsageReport>::new();
+        if response.usage_reports().is_some() {
+            reports = response.usage_reports().unwrap();
+        }
         let app_keys = response.app_keys().ok_or(AuthResponseError::ListKeysMiss)?;
         let app_id = AppId::from(
             app_keys
