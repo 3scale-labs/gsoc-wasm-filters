@@ -20,7 +20,7 @@ func StartProxy(dockerfile string) error {
 		fmt.Printf("Error starting proxy container: %v", err)
 		return err
 	}
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 	return nil
 }
 
