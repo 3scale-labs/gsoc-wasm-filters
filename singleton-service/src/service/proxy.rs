@@ -74,7 +74,7 @@ pub fn _start() {
                 config: DeltaStoreConfig::default(),
             },
             cache_keys: HashMap::new(),
-            report_requests: HashMap::new()
+            report_requests: HashMap::new(),
         })
     });
 }
@@ -85,7 +85,7 @@ struct SingletonService {
     queue_id: Option<u32>,
     delta_store: DeltaStore,
     cache_keys: HashMap<CacheKey, ServiceToken>,
-    report_requests: HashMap<u32, Report>
+    report_requests: HashMap<u32, Report>,
 }
 
 impl RootContext for SingletonService {
@@ -228,12 +228,14 @@ impl Context for SingletonService {
                 }
             }
         } else {
-            info!("HTTP request timeout for request with token_id: {}", token_id);
+            info!(
+                "HTTP request timeout for request with token_id: {}",
+                token_id
+            );
             if self.report_requests.contains_key(&token_id) {
                 self.handle_report_response(&status, &token_id);
             }
         }
-        
     }
 }
 
@@ -335,13 +337,13 @@ impl SingletonService {
             auth_keys.insert(key, app_keys);
             info!("report : {:?}", report);
             // TODO: Handle http local failure
-            match self.perform_http_call(&request){
+            match self.perform_http_call(&request) {
                 Ok(token_id) => {
                     self.report_requests.insert(token_id, report);
-                },
+                }
                 Err(err) => {
                     info!("Error: {}", err);
-                } 
+                }
             }
         }
         self.update_local_cache();
