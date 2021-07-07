@@ -226,10 +226,6 @@ impl CacheFilter {
     ) -> Result<(), AuthResponseError> {
         // Form application struct from the response
         let mut state = HashMap::new();
-        let mut reports = &Vec::<threescalers::response::UsageReport>::new();
-        if response.usage_reports().is_some() {
-            reports = response.usage_reports().unwrap();
-        }
         let app_keys = response.app_keys().ok_or(AuthResponseError::ListKeysMiss)?;
         let app_id = AppId::from(
             app_keys
@@ -253,31 +249,33 @@ impl CacheFilter {
 
         self.cache_key = CacheKey::from(&service_id, &app_identifier);
 
-        for usage in reports {
-            state.insert(
-                usage.metric.clone(),
-                UsageReport {
-                    period_window: PeriodWindow {
-                        start: Duration::from_secs(
-                            usage
-                                .period_start
-                                .0
-                                .try_into()
-                                .or(Err(AuthResponseError::NegativeTimeErr))?,
-                        ),
-                        end: Duration::from_secs(
-                            usage
-                                .period_end
-                                .0
-                                .try_into()
-                                .or(Err(AuthResponseError::NegativeTimeErr))?,
-                        ),
-                        window: Period::from(&usage.period),
+        if let Some(reports) = response.usage_reports() {
+            for usage in reports {
+                state.insert(
+                    usage.metric.clone(),
+                    UsageReport {
+                        period_window: PeriodWindow {
+                            start: Duration::from_secs(
+                                usage
+                                    .period_start
+                                    .0
+                                    .try_into()
+                                    .or(Err(AuthResponseError::NegativeTimeErr))?,
+                            ),
+                            end: Duration::from_secs(
+                                usage
+                                    .period_end
+                                    .0
+                                    .try_into()
+                                    .or(Err(AuthResponseError::NegativeTimeErr))?,
+                            ),
+                            window: Period::from(&usage.period),
+                        },
+                        left_hits: usage.max_value - usage.current_value,
+                        max_value: usage.max_value,
                     },
-                    left_hits: usage.max_value - usage.current_value,
-                    max_value: usage.max_value,
-                },
-            );
+                );
+            }
         }
 
         let mut hierarchy = HashMap::new();

@@ -102,8 +102,8 @@ func DeleteService(service_id string, service_token string) error {
 	header_data := []byte(fmt.Sprintf(`
 		{ 
 			"service_tokens": [{
-				"service_token": %s,
-				"service_id": %s
+				"service_token": "%s",
+				"service_id": "%s"
 			}]
 		}`, service_token, service_id))
 	url =  INTERNAL_URL+"/service_tokens/"
@@ -124,7 +124,7 @@ func AddApplication(service_id string, app_id string, plan_id string) error {
 			"application": {
 				"service_id": "%s",
 				"id": "%s",
-				"plan_id": "%s"
+				"plan_id": "%s",
 				"state": "active"
 			}
 		}`, service_id, app_id, plan_id))
@@ -159,7 +159,7 @@ func AddApplicationKey(service_id string, app_id string, key string) error {
 				"value": "%s"
 			}
 		}`, key))
-	url := INTERNAL_URL+"/services/"+service_id+"/applications/"+app_id+"/keys"
+	url := INTERNAL_URL+"/services/"+service_id+"/applications/"+app_id+"/keys/"
 	res, err := executeHttpRequest(http.MethodPost, url, &header_data)
 	if err != nil {
 		return err
@@ -183,7 +183,7 @@ func DeleteApplicationKey(service_id string, app_id string, key string) error {
 }
 
 func AddUserKey(service_id string, app_id string, key string) error {
-	url := INTERNAL_URL+"/services/"+service_id+"/applications/"+app_id+"/key"+key
+	url := INTERNAL_URL+"/services/"+service_id+"/applications/"+app_id+"/key/"+key
 	res, err := executeHttpRequest(http.MethodPut, url, nil)
 	if err != nil {
 		return err
@@ -217,7 +217,7 @@ func AddMetrics(service_id string, metrics *[]Metric) error {
 					"name": "%s"
 				}
 			}`, service_id, metric.id, metric.name))
-		url := INTERNAL_URL+"/services"+service_id+"/metrics/"+metric.id
+		url := INTERNAL_URL+"/services/"+service_id+"/metrics/"+metric.id
 		res, err := executeHttpRequest(http.MethodPost, url, &header_data)
 		if err != nil {
 			return err
@@ -250,7 +250,7 @@ func UpdateUsageLimit(service_id string, plan_id string, metric_id string, limit
 				"%s": "%d"
 			}
 		}`, limit.period.String(), limit.value))
-	url := INTERNAL_URL+"/services"+service_id+"/plans/"+plan_id+"/usagelimits/"+metric_id+"/"+limit.period.String()
+	url := INTERNAL_URL+"/services/"+service_id+"/plans/"+plan_id+"/usagelimits/"+metric_id+"/"+limit.period.String()
 	res, err := executeHttpRequest(http.MethodPut, url, &header_data)
 	if err != nil {
 		return err
@@ -273,7 +273,7 @@ func UpdateUsageLimits(service_id string, plan_id string, metrics *[]Metric) err
 }
 
 func DeleteUsageLimit(service_id string, plan_id string, metric_id string, period Period) error {
-	url := INTERNAL_URL+"/services"+service_id+"/plans/"+plan_id+"/usagelimits/"+metric_id+"/"+period.String()
+	url := INTERNAL_URL+"/services/"+service_id+"/plans/"+plan_id+"/usagelimits/"+metric_id+"/"+period.String()
 	res, err := executeHttpRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
