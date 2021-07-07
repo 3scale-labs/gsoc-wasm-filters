@@ -12,53 +12,53 @@ import (
 
 type AppCredentialTestSuite struct {
 	suite.Suite
-	service_id    string
-	service_token string
-	app_id        string
-	app_key       string
-	user_key      string
-	plan_id       string
-	metrics       []Metric
+	ServiceID    string
+	ServiceToken string
+	AppID        string
+	AppKey       string
+	UserKey      string
+	PlanID       string
+	metrics      []Metric
 }
 
 func (suite *AppCredentialTestSuite) SetupSuite() {
 	err := StartProxy("./")
 	require.Nilf(suite.T(), err, "Error starting docker-compose: %v", err)
 	// Initializing 3scale backend state
-	suite.app_id = "test_app_id"
-	suite.app_key = "test_app_key"
-	suite.user_key = "test_user_key"
-	suite.service_id = "test_service_id"
-	suite.plan_id = "test_plan_id"
-	suite.service_token = "test_service_token"
+	suite.AppID = "test_app_id"
+	suite.AppKey = "test_app_key"
+	suite.UserKey = "test_user_key"
+	suite.ServiceID = "test_service_id"
+	suite.PlanID = "test_plan_id"
+	suite.ServiceToken = "test_service_token"
 	suite.metrics = []Metric{
-		Metric{"hits", "1", []UsageLimit{
+		{"hits", "1", []UsageLimit{
 			{Day, 10000},
 		}},
-		Metric{"rq", "2", []UsageLimit{
+		{"rq", "2", []UsageLimit{
 			{Month, 10000},
 		}},
 	}
-	if err := CreateService(suite.service_id, suite.service_token); err != nil {
+	if err := CreateService(suite.ServiceID, suite.ServiceToken); err != nil {
 		suite.Errorf(err, "Error creating a service: %v")
 		return
 	}
-	if err := AddApplication(suite.service_id, suite.app_id, suite.plan_id); err != nil {
+	if err := AddApplication(suite.ServiceID, suite.AppID, suite.PlanID); err != nil {
 		suite.Errorf(err, "Error adding an application: %v")
 		return
 	}
-	if err := AddUserKey(suite.service_id, suite.app_id, suite.user_key); err != nil {
+	if err := AddUserKey(suite.ServiceID, suite.AppID, suite.UserKey); err != nil {
 		suite.Errorf(err, "Error adding a user key: %v")
 	}
-	if err := AddApplicationKey(suite.service_id, suite.app_id, suite.app_key); err != nil {
+	if err := AddApplicationKey(suite.ServiceID, suite.AppID, suite.AppKey); err != nil {
 		suite.Errorf(err, "Error adding application key: %v")
 		return
 	}
-	if err := AddMetrics(suite.service_id, &suite.metrics); err != nil {
+	if err := AddMetrics(suite.ServiceID, &suite.metrics); err != nil {
 		suite.Errorf(err, "Error adding metrics: %v")
 		return
 	}
-	if err := UpdateUsageLimits(suite.service_id, suite.plan_id, &suite.metrics); err != nil {
+	if err := UpdateUsageLimits(suite.ServiceID, suite.PlanID, &suite.metrics); err != nil {
 		suite.Errorf(err, "Error updating usage limits: %v")
 		return
 	}
@@ -71,22 +71,22 @@ func TestAppCredentialSuite(t *testing.T) {
 
 func (suite *AppCredentialTestSuite) TearDownSuite() {
 	fmt.Println("Cleaning 3scale backend state")
-	if err := DeleteService(suite.service_id, suite.service_token); err != nil {
+	if err := DeleteService(suite.ServiceID, suite.ServiceToken); err != nil {
 		suite.Errorf(err, "Failed to delete service: %v")
 	}
-	if err := DeleteApplication(suite.service_id, suite.app_id); err != nil {
+	if err := DeleteApplication(suite.ServiceID, suite.AppID); err != nil {
 		suite.Errorf(err, "Failed to delete applications: %v")
 	}
-	if err := DeleteApplicationKey(suite.service_id, suite.app_id, suite.app_key); err != nil {
+	if err := DeleteApplicationKey(suite.ServiceID, suite.AppID, suite.AppKey); err != nil {
 		suite.Errorf(err, "Failed to delete Application key: %v")
 	}
-	if err := DeleteUserKey(suite.service_id, suite.app_id, suite.user_key); err != nil {
+	if err := DeleteUserKey(suite.ServiceID, suite.AppID, suite.UserKey); err != nil {
 		suite.Errorf(err, "Failed to delete Application's user key: %v")
 	}
-	if err := DeleteMetrics(suite.service_id, &suite.metrics); err != nil {
+	if err := DeleteMetrics(suite.ServiceID, &suite.metrics); err != nil {
 		suite.Errorf(err, "Failed to delete metrics: %v")
 	}
-	if err := DeleteUsageLimits(suite.service_id, suite.plan_id, &suite.metrics); err != nil {
+	if err := DeleteUsageLimits(suite.ServiceID, suite.PlanID, &suite.metrics); err != nil {
 		suite.Errorf(err, "Failed to delete usage limits")
 	}
 	fmt.Println("Stopping AppCredentialTestSuite")
@@ -118,7 +118,7 @@ func (suite *AppCredentialTestSuite) TestAppIdForbidden() {
 	req.Header = http.Header{
 		"Host":      []string{"localhost"},
 		"x-app-id":  []string{"wrong_app_id"},
-		"x-app-key": []string{suite.app_key},
+		"x-app-key": []string{suite.AppKey},
 	}
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
