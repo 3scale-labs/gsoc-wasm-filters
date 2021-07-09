@@ -1,33 +1,40 @@
 package main
 
-
 import (
-	"net/http"
-	"fmt"
-	"errors"
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
+	"net/http"
 )
 
 // These credentials should match those mentioned in the ci.yaml.
 const (
-	INTERNAL_USER = "root"
-	INTERNAL_PASS = "root"
-	PORT = "3000"
-	IP_ADDRESS = "0.0.0.0"
-	INTERNAL_PREFIX = "/internal"
-	INTERNAL_URL = "http://"+INTERNAL_USER+":"+INTERNAL_PASS+"@"+IP_ADDRESS+":"+PORT+INTERNAL_PREFIX
+	InternalUser   = "root"
+	InternalPass   = "root"
+	Port           = "3000"
+	IPAddress      = "0.0.0.0"
+	InternalPrefix = "/internal"
+	InternalURL    = "http://" + InternalUser + ":" + InternalPass + "@" + IPAddress + ":" + Port + InternalPrefix
 )
 
+// Period represents the time period for metrics
 type Period string
 
 const (
+	// Minute represents a minute in time.
 	Minute Period = "minute"
+	// Hour represents a hour in time.
 	Hour Period = "hour"
+	// Day represents a day in time.
 	Day Period = "day"
+	// Week represents a week in time.
 	Week Period = "week"
+	// Month represents a month in time.
 	Month Period = "month"
+	// Year represents a year in time.
 	Year Period = "year"
+	// Eternity represents forever.
 	Eternity Period = "eternity"
 )
 
@@ -35,28 +42,32 @@ func (p Period) String() string {
 	return string(p)
 }
 
+// UsageLimit in threeescale.
 type UsageLimit struct {
 	period Period
-	value int
+	value  int
 }
 
+// Metric in threescale.
 type Metric struct {
-	name string
-	id string
+	name   string
+	id     string
 	limits []UsageLimit
 }
 
-func CreateService(service_id string, service_token string) error {
+// CreateService helper creates a service in the threescale.
+func CreateService(serviceID string, serviceToken string) error {
 	client := &http.Client{}
 	// creating service with specified service_id
-	header_data := []byte(fmt.Sprintf(`
+	headerData := []byte(fmt.Sprintf(`
 		{ 
 			"service": {
 				"id": "%s",
+				"provider_key":"my_provider_key",
 				"state": "active"
 			}
-		}`, service_id))
-	req, err := http.NewRequest("POST", INTERNAL_URL+"/services/", bytes.NewBuffer(header_data))
+		}`, serviceID))
+	req, err := http.NewRequest("POST", InternalURL+"/services/", bytes.NewBuffer(headerData))
 	if err != nil {
 		fmt.Printf("Error while creating HTTP request: %v", err)
 		return err
@@ -67,204 +78,213 @@ func CreateService(service_id string, service_token string) error {
 		return err
 	}
 	if res.StatusCode != 201 {
-		return fmt.Errorf("Failed to create a new service(id: %s)", service_id)
+		return fmt.Errorf("Failed to create a new service(id: %s)", serviceID)
 	}
 
 	// adding a service_token to previously created service
-	header_data = []byte(fmt.Sprintf(`
+	headerData = []byte(fmt.Sprintf(`
 		{ 
 			"service_tokens": {
 				"%s": {
 					"service_id": "%s"
 				}
 			}
-		}`, service_token, service_id))
-	url :=  INTERNAL_URL+"/service_tokens/"
-	res, err = executeHttpRequest(http.MethodPost, url, &header_data)
+		}`, serviceToken, serviceID))
+	url := InternalURL + "/service_tokens/"
+	res, err = executeHTTPRequest(http.MethodPost, url, &headerData)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 201 {
-		return fmt.Errorf("Failed to create a service id (%s) and token pair (%s)", service_id, service_token)
+		return fmt.Errorf("Failed to create a service id (%s) and token pair (%s)", serviceID, serviceToken)
 	}
 	return nil
 }
 
-func DeleteService(service_id string, service_token string) error {
-	url :=  INTERNAL_URL+"/services/"+service_id
-	res, err := executeHttpRequest(http.MethodDelete, url, nil)
+// DeleteService deletes a service
+func DeleteService(serviceID string, serviceToken string) error {
+	url := InternalURL + "/services/" + serviceID
+	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("Failed to delete the service(id: %s)", service_id)
+		return fmt.Errorf("Failed to delete the service(id: %s)", serviceID)
 	}
-	header_data := []byte(fmt.Sprintf(`
+	headerData := []byte(fmt.Sprintf(`
 		{ 
 			"service_tokens": [{
 				"service_token": "%s",
 				"service_id": "%s"
 			}]
-		}`, service_token, service_id))
-	url =  INTERNAL_URL+"/service_tokens/"
-	res, err = executeHttpRequest(http.MethodDelete, url, &header_data)
+		}`, serviceToken, serviceID))
+	url = InternalURL + "/service_tokens/"
+	res, err = executeHTTPRequest(http.MethodDelete, url, &headerData)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("Failed to delete the service id (%s) and token pair (%s)", service_id, service_token)
+		return fmt.Errorf("Failed to delete the service id (%s) and token pair (%s)", serviceID, serviceToken)
 	}
 	return nil
 }
 
-// Creating a new application associated with 'service_id', 'app_id' and 'plan_id'
-func AddApplication(service_id string, app_id string, plan_id string) error {
-	header_data := []byte(fmt.Sprintf(`
+// AddApplication creates a new application associated with 'service_id', 'app_id' and 'plan_id'
+func AddApplication(serviceID string, appID string, planID string) error {
+	headerData := []byte(fmt.Sprintf(`
 		{ 
 			"application": {
 				"service_id": "%s",
 				"id": "%s",
 				"plan_id": "%s",
+				"plan_name": "Basic",
 				"state": "active"
 			}
-		}`, service_id, app_id, plan_id))
-	url := INTERNAL_URL+"/services/"+service_id+"/applications/"+app_id
-	res, err := executeHttpRequest(http.MethodPost, url, &header_data)
+		}`, serviceID, appID, planID))
+	url := InternalURL + "/services/" + serviceID + "/applications/" + appID
+	res, err := executeHTTPRequest(http.MethodPost, url, &headerData)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 201 {
-		return fmt.Errorf("Failed to create an application(id: %s)", app_id)
+		return fmt.Errorf("Failed to create an application(id: %s)", appID)
 	}
 	return nil
 }
 
-func DeleteApplication(service_id string, app_id string) error {
-	url :=  INTERNAL_URL+"/services/"+service_id+"/applications"+app_id
-	res, err := executeHttpRequest(http.MethodDelete, url, nil)
+// DeleteApplication deletes an application.
+func DeleteApplication(serviceID string, appID string) error {
+	url := InternalURL + "/services/" + serviceID + "/applications" + serviceID
+	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("Failed to delete the application(service_id: %s, app_id: %s)", service_id, app_id)
+		return fmt.Errorf("Failed to delete the application(service_id: %s, app_id: %s)", serviceID, appID)
 	}
 	return nil
 }
 
-// Add key to the application identified by 'service_id' and 'app_id'
-func AddApplicationKey(service_id string, app_id string, key string) error {
-	header_data := []byte(fmt.Sprintf(`
+// AddApplicationKey adds key to the application identified by 'service_id' and 'app_id'
+func AddApplicationKey(serviceID string, appID string, key string) error {
+	headerData := []byte(fmt.Sprintf(`
 		{ 
 			"application_key": {
 				"value": "%s"
 			}
 		}`, key))
-	url := INTERNAL_URL+"/services/"+service_id+"/applications/"+app_id+"/keys/"
-	res, err := executeHttpRequest(http.MethodPost, url, &header_data)
+	url := InternalURL + "/services/" + serviceID + "/applications/" + appID + "/keys/"
+	res, err := executeHTTPRequest(http.MethodPost, url, &headerData)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 201 {
-		return fmt.Errorf("Failed to add an application key(app_id: %s; key: %s)", app_id, key)
+		return fmt.Errorf("Failed to add an application key(app_id: %s; key: %s)", appID, key)
 	}
 	return nil
 }
 
-func DeleteApplicationKey(service_id string, app_id string, key string) error {
-	url :=  INTERNAL_URL+"/services/"+service_id+"/applications"+app_id+"/keys/"+key
-	res, err := executeHttpRequest(http.MethodDelete, url, nil)
+// DeleteApplicationKey deletes an application key
+func DeleteApplicationKey(serviceID string, appID string, key string) error {
+	url := InternalURL + "/services/" + serviceID + "/applications" + appID + "/keys/" + key
+	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("Failed to delete the application key(app_id: %s, key: %s)", app_id, key)
+		return fmt.Errorf("Failed to delete the application key(app_id: %s, key: %s)", appID, key)
 	}
 	return nil
 }
 
-func AddUserKey(service_id string, app_id string, key string) error {
-	url := INTERNAL_URL+"/services/"+service_id+"/applications/"+app_id+"/key/"+key
-	res, err := executeHttpRequest(http.MethodPut, url, nil)
-	if err != nil {
-		return err
-	}
-	if res.StatusCode != 201 {
-		return fmt.Errorf("Failed to add a user key(app_id: %s)", app_id)
-	}
-	return nil
-}
-
-func DeleteUserKey(service_id string, app_id string, key string) error {
-	url := INTERNAL_URL+"/services/"+service_id+"/applications/key"+key
-	res, err := executeHttpRequest(http.MethodDelete, url, nil)
+// AddUserKey adds a user key to the specified application.
+func AddUserKey(serviceID string, appID string, key string) error {
+	url := InternalURL + "/services/" + serviceID + "/applications/" + appID + "/key/" + key
+	res, err := executeHTTPRequest(http.MethodPut, url, nil)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("Failed to delete a user key for app(id: %s)", app_id)
+		return fmt.Errorf("Failed to add a user key(app_id: %s)", appID)
 	}
 	return nil
 }
 
-// Add a metrics to a service
-func AddMetrics(service_id string, metrics *[]Metric) error {
+// DeleteUserKey deletes a user key
+func DeleteUserKey(serviceID string, appID string, key string) error {
+	url := InternalURL + "/services/" + serviceID + "/applications/key" + key
+	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != 200 {
+		return fmt.Errorf("Failed to delete a user key for app(id: %s)", appID)
+	}
+	return nil
+}
+
+// AddMetrics adds a metrics to a service
+func AddMetrics(serviceID string, metrics *[]Metric) error {
 	for _, metric := range *metrics {
-		header_data := []byte(fmt.Sprintf(`
+		headerData := []byte(fmt.Sprintf(`
 			{ 
 				"metric": {
 					"service_id": "%s",
 					"id": "%s",
 					"name": "%s"
 				}
-			}`, service_id, metric.id, metric.name))
-		url := INTERNAL_URL+"/services/"+service_id+"/metrics/"+metric.id
-		res, err := executeHttpRequest(http.MethodPost, url, &header_data)
+			}`, serviceID, metric.id, metric.name))
+		url := InternalURL + "/services/" + serviceID + "/metrics/" + metric.id
+		res, err := executeHTTPRequest(http.MethodPost, url, &headerData)
 		if err != nil {
 			return err
 		}
 		if res.StatusCode != 201 {
-			return fmt.Errorf("Failed to add a metric to the service(id: %s)", service_id)
+			return fmt.Errorf("Failed to add a metric to the service(id: %s)", serviceID)
 		}
 	}
 	return nil
 }
 
-func DeleteMetrics(service_id string, metrics *[]Metric) error {
+// DeleteMetrics deletes metrics
+func DeleteMetrics(serviceID string, metrics *[]Metric) error {
 	for _, metric := range *metrics {
-		url :=  INTERNAL_URL+"/services/"+service_id+"/metrics/"+metric.id
-		res, err := executeHttpRequest(http.MethodDelete, url, nil)
+		url := InternalURL + "/services/" + serviceID + "/metrics/" + metric.id
+		res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 		if err != nil {
 			return err
 		}
 		if res.StatusCode != 200 {
-			return fmt.Errorf("Failed to delete the metric(service_id: %s, metric: %s)", service_id, metric.name)
+			return fmt.Errorf("Failed to delete the metric(service_id: %s, metric: %s)", serviceID, metric.name)
 		}
 	}
 	return nil
 }
 
-func UpdateUsageLimit(service_id string, plan_id string, metric_id string, limit UsageLimit) error {
-	header_data := []byte(fmt.Sprintf(`
+// UpdateUsageLimit updates usage limit.
+func UpdateUsageLimit(serviceID string, planID string, metricID string, limit UsageLimit) error {
+	headerData := []byte(fmt.Sprintf(`
 		{ 
 			"usagelimit": {
 				"%s": "%d"
 			}
 		}`, limit.period.String(), limit.value))
-	url := INTERNAL_URL+"/services/"+service_id+"/plans/"+plan_id+"/usagelimits/"+metric_id+"/"+limit.period.String()
-	res, err := executeHttpRequest(http.MethodPut, url, &header_data)
+	url := InternalURL + "/services/" + serviceID + "/plans/" + planID + "/usagelimits/" + metricID + "/" + limit.period.String()
+	res, err := executeHTTPRequest(http.MethodPut, url, &headerData)
 	if err != nil {
 		return err
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("Failed to update usage limits for a metric(id: %s)", metric_id)
+		return fmt.Errorf("Failed to update usage limits for a metric(id: %s)", metricID)
 	}
 	return nil
 }
 
-func UpdateUsageLimits(service_id string, plan_id string, metrics *[]Metric) error {
+// UpdateUsageLimits updates usage limits.
+func UpdateUsageLimits(serviceID string, planID string, metrics *[]Metric) error {
 	for _, metric := range *metrics {
 		for _, limit := range metric.limits {
-			if err := UpdateUsageLimit(service_id, plan_id, metric.id, limit); err != nil {
+			if err := UpdateUsageLimit(serviceID, planID, metric.id, limit); err != nil {
 				return err
 			}
 		}
@@ -272,9 +292,10 @@ func UpdateUsageLimits(service_id string, plan_id string, metrics *[]Metric) err
 	return nil
 }
 
-func DeleteUsageLimit(service_id string, plan_id string, metric_id string, period Period) error {
-	url := INTERNAL_URL+"/services/"+service_id+"/plans/"+plan_id+"/usagelimits/"+metric_id+"/"+period.String()
-	res, err := executeHttpRequest(http.MethodDelete, url, nil)
+// DeleteUsageLimit already-set usage limit.
+func DeleteUsageLimit(serviceID string, planID string, metricID string, period Period) error {
+	url := InternalURL + "/services/" + serviceID + "/plans/" + planID + "/usagelimits/" + metricID + "/" + period.String()
+	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
 	}
@@ -284,10 +305,11 @@ func DeleteUsageLimit(service_id string, plan_id string, metric_id string, perio
 	return nil
 }
 
-func DeleteUsageLimits(service_id string, plan_id string, metrics *[]Metric) error {
+// DeleteUsageLimits is a wrapper function for DeleteUsageLimit to delete multiple limits at once.
+func DeleteUsageLimits(serviceID string, planID string, metrics *[]Metric) error {
 	for _, metric := range *metrics {
 		for _, limit := range metric.limits {
-			if err := DeleteUsageLimit(service_id, plan_id, metric.id, limit.period); err != nil {
+			if err := DeleteUsageLimit(serviceID, planID, metric.id, limit.period); err != nil {
 				return err
 			}
 		}
@@ -295,7 +317,7 @@ func DeleteUsageLimits(service_id string, plan_id string, metrics *[]Metric) err
 	return nil
 }
 
-func executeHttpRequest(method string, url string, data *[]byte) (*http.Response, error) {
+func executeHTTPRequest(method string, url string, data *[]byte) (*http.Response, error) {
 	client := &http.Client{}
 	var body io.Reader
 	if data != nil {

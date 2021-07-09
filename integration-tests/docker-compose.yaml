@@ -1,25 +1,38 @@
 version: '3.7'
-services:
-  proxy:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args: 
-        - envoy=$ENVOY
-    depends_on:
-      - backend_service
-    networks:
-      - envoymesh
-    ports:
-      - "9095:9095"
-      - "9000:9000"
-  
+services: 
   backend_service:
     image: solsson/http-echo
     networks:
       - envoymesh
     environment:
-      - PORT=8000 
+      - PORT=8000
+      
+  my-redis:
+    image: redis
+    container_name: my-redis
+    command: --databases 2
+    ports: 
+      - "6379:6379"
+    networks: 
+      - envoymesh 
+
+  apisonator:
+    image: quay.io/3scale/apisonator
+    container_name: apisonator
+    environment: 
+      - CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0
+      - CONFIG_REDIS_PROXY=redis://redis:6379/1
+      - CONFIG_INTERNAL_API_USER=root
+      - CONFIG_INTERNAL_API_PASSWORD=root
+    ports: 
+      - "3000:3000"
+    links: 
+      - "my-redis:redis"
+    command: 3scale_backend start
+    networks: 
+      - envoymesh 
 
 networks:
-  envoymesh: {}
+  envoymesh:
+    name: envoymesh
+    

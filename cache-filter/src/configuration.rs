@@ -18,7 +18,7 @@ impl Default for FilterConfig {
         FilterConfig {
             upstream: Upstream {
                 name: "outbound|443||su1.3scale.net".to_owned(),
-                url: "https://su1.3scale.net".parse().unwrap(),
+                url: "http://0.0.0.0:3000/".parse().unwrap(),
                 timeout: Duration::from_millis(5000),
             },
             failure_mode_deny: true,
