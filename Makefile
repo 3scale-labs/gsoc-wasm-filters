@@ -36,8 +36,6 @@ clean:
 	rm ./deployments/docker-compose/singleton_service.wasm
 	rm ./deployments/docker-compose/cache_filter.wasm
 	rm ./deployments/docker-compose/threescale_wasm_auth.wasm
-	docker rm my-redis -f
-	docker rm apisonator -f
 
 clean-service:
 	@echo "> Cleaning singleton_service build artifacts"
@@ -70,7 +68,11 @@ apisonator: ## Runs apisonator and redis container
             -e CONFIG_INTERNAL_API_PASSWORD=root -p 3000:3000 -d --link my-redis:redis \
             --name apisonator quay.io/3scale/apisonator 3scale_backend start
 
-integration: apisonator
+local-services:
+	@echo "> Starting local services for integration tests"
+	docker-compose -f integration-tests/docker-compose.yaml up --build -d
+
+integration: local-services
 	@echo "> Starting integration tests"
 	mkdir -p integration-tests/artifacts
 	cp deployments/docker-compose/cache_filter.wasm integration-tests/artifacts/cache_filter.wasm
@@ -79,8 +81,7 @@ integration: apisonator
 	go clean -testcache
 	go test -p 1 ./... -v
 	rm -rf integration-tests/artifacts
-	docker rm my-redis -f
-	docker rm apisonator -f
+	docker-compose -f integration-tests/docker-compose.yaml down
 
 run:
 	@echo "> Starting services"

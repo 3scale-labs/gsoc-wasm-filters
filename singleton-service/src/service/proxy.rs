@@ -30,6 +30,7 @@ use threescalers::{http::Request, response::Authorization};
 // QUEUE_NAME should be the same as the one in cache filter.
 const QUEUE_NAME: &str = "message_queue";
 const RATE_LIMIT_STATUS: &str = "409";
+const TIMEOUT_STATUS: &str = "504";
 
 #[derive(Error, Debug)]
 pub enum SingletonServiceError {
@@ -73,6 +74,7 @@ pub fn _start() {
                 config: DeltaStoreConfig::default(),
             },
             cache_keys: HashMap::new(),
+            report_requests: HashMap::new(),
         })
     });
 }
@@ -83,6 +85,7 @@ struct SingletonService {
     queue_id: Option<u32>,
     delta_store: DeltaStore,
     cache_keys: HashMap<CacheKey, ServiceToken>,
+    report_requests: HashMap<u32, Report>,
 }
 
 impl RootContext for SingletonService {
@@ -210,15 +213,27 @@ impl Context for SingletonService {
             .find(|(key, _)| key.as_str() == ":status")
             .map(|(_, value)| value)
             .unwrap();
-        match self.get_http_call_response_body(0, body_size) {
-            Some(bytes) => {
-                info!("Auth response");
-                // TODO : Handle auth processing.
-                self.handle_auth_response(bytes, &status).unwrap();
+        if status != TIMEOUT_STATUS {
+            match self.get_http_call_response_body(0, body_size) {
+                Some(bytes) => {
+                    info!("Auth response");
+                    // TODO : Handle auth processing.
+                    self.handle_auth_response(bytes, &status).unwrap();
+                }
+                None => {
+                    if self.report_requests.contains_key(&token_id) {
+                        info!("Report response");
+                        self.handle_report_response(&status, &token_id);
+                    }
+                }
             }
-            None => {
-                info!("Report response");
-                self.handle_report_response(&status);
+        } else {
+            info!(
+                "HTTP request timeout for request with token_id: {}",
+                token_id
+            );
+            if self.report_requests.contains_key(&token_id) {
+                self.handle_report_response(&status, &token_id);
             }
         }
     }
@@ -322,9 +337,13 @@ impl SingletonService {
             auth_keys.insert(key, app_keys);
             info!("report : {:?}", report);
             // TODO: Handle http local failure
-            #[allow(unused_must_use)]
-            {
-                self.perform_http_call(&request);
+            match self.perform_http_call(&request) {
+                Ok(token_id) => {
+                    self.report_requests.insert(token_id, report);
+                }
+                Err(err) => {
+                    info!("Error: {}", err);
+                }
             }
         }
         self.update_local_cache();
@@ -447,8 +466,9 @@ impl SingletonService {
 
     /// Handle Report response received from the 3scale SM API. Depending on the response received
     /// several operations will take place.
-    fn handle_report_response(&self, status: &str) {
-        // TODO : Handle report failure by storing the data in shared data.
-        info!("Report status : {}", status);
+    fn handle_report_response(&mut self, status: &str, token_id: &u32) {
+        // TODO : Handle report failure.
+        info!("Report status : {} {}", status, token_id);
+        self.report_requests.remove(&token_id);
     }
 }
