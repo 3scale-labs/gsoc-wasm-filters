@@ -1,5 +1,6 @@
 use crate::proxy::{set_application_to_cache, CacheKey};
-use crate::structs::{Application, Hierarchy, Metrics, Period, ThreescaleData};
+use crate::structs::{AppIdentifier, Application, Hierarchy, Metrics, Period, ThreescaleData};
+use std::collections::HashMap;
 use std::time::Duration;
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -10,6 +11,13 @@ pub enum UpdateMetricsError {
     RateLimited,
     #[error("application set was unsuccessful")]
     CacheUpdateFail,
+}
+
+/// AllocatedSize trait should be implemented for types that have
+/// dynamic memory allocations on the heap and that are taken into
+/// effect for memory allocation.
+pub trait AllocatedSize {
+    fn dynamic_allocated_size(&self) -> usize;
 }
 
 // updates application to reflect consumed quota if not rate-limited
@@ -73,5 +81,38 @@ pub fn add_hierarchy_to_metrics(hierarchy: &Hierarchy, metrics: &mut Metrics) {
                 *metrics.borrow_mut().entry(parent.to_string()).or_insert(0) += *hits;
             }
         }
+    }
+}
+
+/// AllocatedSize impl for String.
+impl AllocatedSize for String {
+    // Returns the dynamically allocated value of a String on the heap.
+    fn dynamic_allocated_size(&self) -> usize {
+        self.capacity()
+    }
+}
+
+/// AllocatedSize impl for AppIdentifier.
+impl AllocatedSize for AppIdentifier {
+    // Returns the dynamically allocated value of a AppIdentifier on the heap.
+    fn dynamic_allocated_size(&self) -> usize {
+        match self {
+            AppIdentifier::AppId(app_id, None) => app_id.as_ref().to_string().capacity(),
+            AppIdentifier::AppId(app_id, Some(app_key)) => {
+                app_id.as_ref().to_string().capacity() + app_key.as_ref().to_string().capacity()
+            }
+            AppIdentifier::UserKey(user_key) => user_key.as_ref().to_string().capacity(),
+        }
+    }
+}
+
+/// AllocatedSize impl for HashMap<String, u64>.
+impl AllocatedSize for HashMap<String, u64> {
+    // Returns the dynamically allocated value of HashMap<String, u64>. Key is considerd
+    // here because u64 has a fixed size.
+    fn dynamic_allocated_size(&self) -> usize {
+        self.iter()
+            .map(|(key, _)| key.dynamic_allocated_size())
+            .sum()
     }
 }
