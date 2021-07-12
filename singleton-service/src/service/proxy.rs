@@ -407,7 +407,7 @@ impl SingletonService {
                                     ),
                                     window: Period::from(&usage.period),
                                 },
-                                left_hits: usage.current_value,
+                                left_hits: usage.max_value - usage.current_value,
                                 max_value: usage.max_value,
                             },
                         );
