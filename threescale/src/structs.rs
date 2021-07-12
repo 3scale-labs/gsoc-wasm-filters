@@ -8,7 +8,7 @@ use threescalers::response::Period as ResponsePeriod;
 pub type Hierarchy = HashMap<String, Vec<String>>;
 pub type Metrics = RefCell<HashMap<String, u64>>;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub enum Period {
     Minute,
     Hour,
@@ -49,7 +49,7 @@ impl From<&ResponsePeriod> for Period {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PeriodWindow {
     pub start: Duration,
     pub end: Duration,
@@ -57,7 +57,7 @@ pub struct PeriodWindow {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct UsageReport {
     pub period_window: PeriodWindow,
     pub left_hits: u64,
@@ -199,7 +199,7 @@ impl PartialEq for AppIdentifier {
 }
 
 // Threescale's Application representation for cache
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Application {
     pub app_id: AppIdentifier,
     pub service_id: ServiceId,
