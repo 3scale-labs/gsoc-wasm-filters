@@ -94,7 +94,7 @@ impl DeltaStore {
                     * (std::mem::size_of::<HashMap<String, u64>>()
                         + std::mem::size_of::<AppIdentifier>())
                     + threescale.metrics.borrow().capacity()
-                        * (std::mem::size_of::<HashMap<String, u64>>());
+                        * (std::mem::size_of::<String>() + std::mem::size_of::<u64>());
                 self.deltas.insert(delta_key, usages);
                 // new_alloc denotes the new allocation of the services hashmap.
                 let new_alloc = self.deltas.capacity();
