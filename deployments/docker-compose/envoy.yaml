@@ -18,7 +18,7 @@ bootstrap_extensions:
           {
             "upstream_config": {
               "name": "outbound|443||su1.3scale.net",
-              "url": "https://su1.3scale.net",
+              "url": "http://0.0.0.0:3000/",
               "timeout": 20
             },
             "delta_store_config": {
@@ -105,8 +105,8 @@ static_resources:
                       },
                       "services": [
                         {
-                          "id": "2555417908737",
-                          "token": "2331c2349cf232ddd5531d0cb31a9eeee64bef80a38d418a96448bbf8406c4c5",
+                          "id": "test_service_id",
+                          "token": "test_service_token",
                           "authorities": [
                             "*"
                           ],
@@ -334,10 +334,5 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: su1.3scale.net
-                port_value: 443
-    transport_socket:
-      name: envoy.transport_sockets.tls
-      typed_config:
-        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-        sni: su1.3scale.net
+                address: apisonator
+                port_value: 3000

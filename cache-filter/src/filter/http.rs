@@ -44,8 +44,6 @@ enum AuthResponseError {
     CacheHitErr(#[from] CacheHitError),
     #[error("conversion from i64 time to u64 duration failed")]
     NegativeTimeErr,
-    #[error("usage reports from 3scale auth response are missing")]
-    UsageNotFound,
     #[error("list app keys from 3scale auth response are missing")]
     ListKeysMiss,
     #[error("app id field is missing from list keys extension response")]
@@ -228,9 +226,6 @@ impl CacheFilter {
     ) -> Result<(), AuthResponseError> {
         // Form application struct from the response
         let mut state = HashMap::new();
-        let reports = response
-            .usage_reports()
-            .ok_or(AuthResponseError::UsageNotFound)?;
         let app_keys = response.app_keys().ok_or(AuthResponseError::ListKeysMiss)?;
         let app_id = AppId::from(
             app_keys
@@ -254,31 +249,33 @@ impl CacheFilter {
 
         self.cache_key = CacheKey::from(&service_id, &app_identifier);
 
-        for usage in reports {
-            state.insert(
-                usage.metric.clone(),
-                UsageReport {
-                    period_window: PeriodWindow {
-                        start: Duration::from_secs(
-                            usage
-                                .period_start
-                                .0
-                                .try_into()
-                                .or(Err(AuthResponseError::NegativeTimeErr))?,
-                        ),
-                        end: Duration::from_secs(
-                            usage
-                                .period_end
-                                .0
-                                .try_into()
-                                .or(Err(AuthResponseError::NegativeTimeErr))?,
-                        ),
-                        window: Period::from(&usage.period),
+        if let Some(reports) = response.usage_reports() {
+            for usage in reports {
+                state.insert(
+                    usage.metric.clone(),
+                    UsageReport {
+                        period_window: PeriodWindow {
+                            start: Duration::from_secs(
+                                usage
+                                    .period_start
+                                    .0
+                                    .try_into()
+                                    .or(Err(AuthResponseError::NegativeTimeErr))?,
+                            ),
+                            end: Duration::from_secs(
+                                usage
+                                    .period_end
+                                    .0
+                                    .try_into()
+                                    .or(Err(AuthResponseError::NegativeTimeErr))?,
+                            ),
+                            window: Period::from(&usage.period),
+                        },
+                        left_hits: usage.max_value - usage.current_value,
+                        max_value: usage.max_value,
                     },
-                    left_hits: usage.max_value - usage.current_value,
-                    max_value: usage.max_value,
-                },
-            );
+                );
+            }
         }
 
         let mut hierarchy = HashMap::new();

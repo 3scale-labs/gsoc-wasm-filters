@@ -63,6 +63,7 @@ func CreateService(serviceID string, serviceToken string) error {
 		{ 
 			"service": {
 				"id": "%s",
+				"provider_key":"my_provider_key",
 				"state": "active"
 			}
 		}`, serviceID))
@@ -113,8 +114,8 @@ func DeleteService(serviceID string, serviceToken string) error {
 	headerData := []byte(fmt.Sprintf(`
 		{ 
 			"service_tokens": [{
-				"service_token": %s,
-				"service_id": %s
+				"service_token": "%s",
+				"service_id": "%s"
 			}]
 		}`, serviceToken, serviceID))
 	url = InternalURL + "/service_tokens/"
@@ -136,7 +137,7 @@ func AddApplication(serviceID string, appID string, planID string) error {
 				"service_id": "%s",
 				"id": "%s",
 				"plan_id": "%s",
-				"plan_name": "basic",
+				"plan_name": "Basic",
 				"state": "active"
 			}
 		}`, serviceID, appID, planID))
@@ -172,7 +173,7 @@ func AddApplicationKey(serviceID string, appID string, key string) error {
 				"value": "%s"
 			}
 		}`, key))
-	url := InternalURL + "/services/" + serviceID + "/applications/" + appID + "/keys"
+	url := InternalURL + "/services/" + serviceID + "/applications/" + appID + "/keys/"
 	res, err := executeHTTPRequest(http.MethodPost, url, &headerData)
 	if err != nil {
 		return err
@@ -196,14 +197,14 @@ func DeleteApplicationKey(serviceID string, appID string, key string) error {
 	return nil
 }
 
-// AddUserKey adds a user key
+// AddUserKey adds a user key to the specified application.
 func AddUserKey(serviceID string, appID string, key string) error {
-	url := InternalURL + "/services/" + serviceID + "/applications/" + appID + "/key" + key
+	url := InternalURL + "/services/" + serviceID + "/applications/" + appID + "/key/" + key
 	res, err := executeHTTPRequest(http.MethodPut, url, nil)
 	if err != nil {
 		return err
 	}
-	if res.StatusCode != 201 {
+	if res.StatusCode != 200 {
 		return fmt.Errorf("Failed to add a user key(app_id: %s)", appID)
 	}
 	return nil
@@ -233,7 +234,7 @@ func AddMetrics(serviceID string, metrics *[]Metric) error {
 					"name": "%s"
 				}
 			}`, serviceID, metric.id, metric.name))
-		url := InternalURL + "/services" + serviceID + "/metrics/" + metric.id
+		url := InternalURL + "/services/" + serviceID + "/metrics/" + metric.id
 		res, err := executeHTTPRequest(http.MethodPost, url, &headerData)
 		if err != nil {
 			return err
@@ -268,7 +269,7 @@ func UpdateUsageLimit(serviceID string, planID string, metricID string, limit Us
 				"%s": "%d"
 			}
 		}`, limit.period.String(), limit.value))
-	url := InternalURL + "/services" + serviceID + "/plans/" + planID + "/usagelimits/" + metricID + "/" + limit.period.String()
+	url := InternalURL + "/services/" + serviceID + "/plans/" + planID + "/usagelimits/" + metricID + "/" + limit.period.String()
 	res, err := executeHTTPRequest(http.MethodPut, url, &headerData)
 	if err != nil {
 		return err
@@ -279,7 +280,7 @@ func UpdateUsageLimit(serviceID string, planID string, metricID string, limit Us
 	return nil
 }
 
-// UpdateUsageLimits updates usage limits,
+// UpdateUsageLimits updates usage limits.
 func UpdateUsageLimits(serviceID string, planID string, metrics *[]Metric) error {
 	for _, metric := range *metrics {
 		for _, limit := range metric.limits {
@@ -291,9 +292,9 @@ func UpdateUsageLimits(serviceID string, planID string, metrics *[]Metric) error
 	return nil
 }
 
-// DeleteUsageLimit deletes usage limit
+// DeleteUsageLimit already-set usage limit.
 func DeleteUsageLimit(serviceID string, planID string, metricID string, period Period) error {
-	url := InternalURL + "/services" + serviceID + "/plans/" + planID + "/usagelimits/" + metricID + "/" + period.String()
+	url := InternalURL + "/services/" + serviceID + "/plans/" + planID + "/usagelimits/" + metricID + "/" + period.String()
 	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
@@ -304,7 +305,7 @@ func DeleteUsageLimit(serviceID string, planID string, metricID string, period P
 	return nil
 }
 
-// DeleteUsageLimits deletes usage limits
+// DeleteUsageLimits is a wrapper function for DeleteUsageLimit to delete multiple limits at once.
 func DeleteUsageLimits(serviceID string, planID string, metrics *[]Metric) error {
 	for _, metric := range *metrics {
 		for _, limit := range metric.limits {

@@ -18,6 +18,7 @@ services:
 
   apisonator:
     image: quay.io/3scale/apisonator
+    container_name: apisonator
     environment: 
       - CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0
       - CONFIG_REDIS_PROXY=redis://redis:6379/1

@@ -102,8 +102,8 @@ func (suite *AppCredentialTestSuite) TestAppIdSuccess() {
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
 		"Host":      []string{"localhost"},
-		"x-app-id":  []string{"23f118be"},
-		"x-app-key": []string{"44d128988763aee1b0ff0691f9686f7e"},
+		"x-app-id":  []string{suite.AppID},
+		"x-app-key": []string{suite.AppKey},
 	}
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
@@ -131,7 +131,7 @@ func (suite *AppCredentialTestSuite) TestUserKeySuccess() {
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	q := req.URL.Query()
-	q.Add("api_key", "04fa57ba1e465fb53fddc21ead8a7fc0")
+	q.Add("api_key", suite.UserKey)
 	req.URL.RawQuery = q.Encode()
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
@@ -144,7 +144,7 @@ func (suite *AppCredentialTestSuite) TestUserKeyForbidden() {
 	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	q := req.URL.Query()
-	q.Add("api_key", "04fa57ba1e465fb53fddc21ead8a7fc1")
+	q.Add("api_key", "wrong_user_key")
 	req.URL.RawQuery = q.Encode()
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
@@ -152,30 +152,54 @@ func (suite *AppCredentialTestSuite) TestUserKeyForbidden() {
 	assert.Equal(suite.T(), 403, res.StatusCode, "Invalid http response code for user_key forbidden test: %v", res.StatusCode)
 }
 
-// func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
-// 	client := &http.Client{}
-// 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
-// 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-// 	q := req.URL.Query()
-// 	q.Add("api_key", "10e81d5c065a537b05ab7d78a7156fc5")
-// 	req.URL.RawQuery = q.Encode()
-// 	res, errHTTP := client.Do(req)
-// 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
-// 	fmt.Printf("Response: %v", res)
-// 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for user_key unlimited test: %v", res.StatusCode)
-// }
+func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
+	// Add a new unlimited app
+	if err := AddApplication(suite.ServiceID, "unlimited_app_id", suite.PlanID); err != nil {
+		suite.Errorf(err, "Error adding an application: %v")
+		return
+	}
+	if err := AddUserKey(suite.ServiceID, "unlimited_app_id", suite.UserKey); err != nil {
+		suite.Errorf(err, "Error adding a user key: %v")
+	}
+	client := &http.Client{}
+	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
+	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
+	q := req.URL.Query()
+	q.Add("api_key", suite.UserKey)
+	req.URL.RawQuery = q.Encode()
+	res, errHTTP := client.Do(req)
+	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
+	fmt.Printf("Response: %v", res)
+	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for user_key unlimited test: %v", res.StatusCode)
 
-// func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
-// 	client := &http.Client{}
-// 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
-// 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-// 	req.Header = http.Header{
-// 		"Host":      []string{"localhost"},
-// 		"x-app-id":  []string{"fbcdf529"},
-// 		"x-app-key": []string{"616b9f05e588cd32f9c0db17dbe23781"},
-// 	}
-// 	res, errHTTP := client.Do(req)
-// 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
-// 	fmt.Printf("Response: %v", res)
-// 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for appId unlimited test: %d", res.StatusCode)
-// }
+	if err := DeleteUserKey(suite.ServiceID, "unlimited_app_id", suite.UserKey); err != nil {
+		suite.Errorf(err, "Failed to delete Application's user key: %v")
+	}
+	if err := DeleteApplication(suite.ServiceID, "unlimited_app_id"); err != nil {
+		suite.Errorf(err, "Failed to delete applications: %v")
+	}
+}
+
+func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
+	// Add a new unlimited app
+	if err := AddApplication(suite.ServiceID, "unlimited_app_id", suite.PlanID); err != nil {
+		suite.Errorf(err, "Error adding an application: %v")
+		return
+	}
+
+	client := &http.Client{}
+	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
+	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
+	req.Header = http.Header{
+		"Host":     []string{"localhost"},
+		"x-app-id": []string{"unlimited_app_id"},
+	}
+	res, errHTTP := client.Do(req)
+	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
+	fmt.Printf("Response: %v", res)
+	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for appId unlimited test: %d", res.StatusCode)
+
+	if err := DeleteApplication(suite.ServiceID, "unlimited_app_id"); err != nil {
+		suite.Errorf(err, "Failed to delete applications: %v")
+	}
+}
