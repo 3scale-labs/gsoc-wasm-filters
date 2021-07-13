@@ -153,6 +153,14 @@ func (suite *AppCredentialTestSuite) TestUserKeyForbidden() {
 }
 
 func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
+	// Add a new unlimited app
+	if err := AddApplication(suite.ServiceID, "unlimited_app_id", suite.PlanID); err != nil {
+		suite.Errorf(err, "Error adding an application: %v")
+		return
+	}
+	if err := AddUserKey(suite.ServiceID, "unlimited_app_id", suite.UserKey); err != nil {
+		suite.Errorf(err, "Error adding a user key: %v")
+	}
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
@@ -163,19 +171,35 @@ func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
 	fmt.Printf("Response: %v", res)
 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for user_key unlimited test: %v", res.StatusCode)
+
+	if err := DeleteUserKey(suite.ServiceID, "unlimited_app_id", suite.UserKey); err != nil {
+		suite.Errorf(err, "Failed to delete Application's user key: %v")
+	}
+	if err := DeleteApplication(suite.ServiceID, "unlimited_app_id"); err != nil {
+		suite.Errorf(err, "Failed to delete applications: %v")
+	}
 }
 
 func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
+	// Add a new unlimited app
+	if err := AddApplication(suite.ServiceID, "unlimited_app_id", suite.PlanID); err != nil {
+		suite.Errorf(err, "Error adding an application: %v")
+		return
+	}
+
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
-		"Host":      []string{"localhost"},
-		"x-app-id":  []string{suite.AppID},
-		"x-app-key": []string{suite.AppKey},
+		"Host":     []string{"localhost"},
+		"x-app-id": []string{"unlimited_app_id"},
 	}
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
 	fmt.Printf("Response: %v", res)
 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for appId unlimited test: %d", res.StatusCode)
+
+	if err := DeleteApplication(suite.ServiceID, "unlimited_app_id"); err != nil {
+		suite.Errorf(err, "Failed to delete applications: %v")
+	}
 }
