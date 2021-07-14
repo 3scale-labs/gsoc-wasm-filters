@@ -22,11 +22,11 @@ bootstrap_extensions:
               "timeout": 20
             },
             "delta_store_config": {
-              "capacity": 3,
+              "capacity": 600,
               "periodical_flush": "60s",
               "retry_duration": "30s",
               "await_queue_capacity": 200,
-              "flush_mode": "Periodical"
+              "flush_mode": "ContainerLimit"
             }
           }
       vm_config:

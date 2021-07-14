@@ -181,6 +181,7 @@ impl CacheFilter {
                     }
                     updated_cache = true;
                     self.resume_http_request();
+                    break;
                 }
                 Err(UpdateMetricsError::RateLimited) => {
                     info!("ctxt {}: request is rate-limited", self.context_id);

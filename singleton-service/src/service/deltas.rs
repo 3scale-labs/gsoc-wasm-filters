@@ -1,6 +1,7 @@
 use crate::configuration::delta::{DeltaStoreConfig, FlushMode};
 use chrono::offset::Utc;
 use chrono::DateTime;
+use log::info;
 use std::collections::HashMap;
 use threescale::structs::{AppIdentifier, ThreescaleData};
 
@@ -19,10 +20,16 @@ pub struct DeltaStore {
     //                  - Metric : Value
     pub deltas: HashMap<String, HashMap<AppIdentifier, HashMap<String, u64>>>,
 
-    // Represents the request count. Gets incremented by 1 for each request passing
-    // through the proxy. Used together with the capacity attribute to implement a
-    // container filling mechansim for cache flush in case of high network traffic scenarios.
-    pub request_count: u64,
+    // Represents a value which is proportional to the memory allocation (underestimate appoximation).
+    // Only the memory allocation for deltas hashmap keys and values are considered. Used together with
+    // the capacity attribute to implement a container filling mechansim for cache flush in case of high
+    // network traffic scenarios.
+    // NOTE : Do not interpret this values as the memory allocation of the delta store because only the
+    // allocation of hashmap keys and values are considerd. Dynamic memory allocation and other control
+    // bytes are not considerd here. So not suitable to take decisions for memory management.
+    // Only intended to provide a mechanism for the user to configure a value for delta store flush to
+    // flush cache based on a value propotional to memory allocation.
+    pub memory_allocated: usize,
 
     // DeltaStoreConfig contains all the configurations related for delta store.
     pub config: DeltaStoreConfig,
@@ -44,19 +51,30 @@ impl DeltaStore {
         &mut self,
         threescale: &ThreescaleData,
     ) -> Result<DeltaStoreState, anyhow::Error> {
+        let delta_increase: usize;
         match self.get_mut_service(
             threescale.service_id.as_ref(),
             threescale.service_token.as_ref(),
         ) {
             Some(service) => match DeltaStore::get_mut_app_delta(&threescale.app_id, service) {
                 Some(app) => {
-                    DeltaStore::update_app_delta(app, threescale);
+                    info!(
+                        "Application {} found for service {}",
+                        &threescale.app_id.as_ref(),
+                        &threescale.service_id.as_ref()
+                    );
+                    delta_increase = DeltaStore::update_app_delta(app, threescale);
                 }
                 None => {
-                    DeltaStore::add_app_delta(service, threescale);
+                    info!(
+                        "No application found for service {}",
+                        &threescale.service_id.as_ref()
+                    );
+                    delta_increase = DeltaStore::add_app_delta(service, threescale);
                 }
             },
             None => {
+                info!("No service and application found for the given key combination");
                 let mut usages: HashMap<AppIdentifier, HashMap<String, u64>> = HashMap::new();
                 usages.insert(
                     threescale.app_id.clone(),
@@ -68,11 +86,28 @@ impl DeltaStore {
                     threescale.service_token.as_ref()
                 );
                 self.deltas.insert(delta_key, usages);
+                // transitive_alloc denotes the allocations of the inner hashmaps due to
+                // new entry.
+                let transitive_alloc = (std::mem::size_of::<HashMap<String, u64>>()
+                    + std::mem::size_of::<AppIdentifier>())
+                    + threescale.metrics.borrow().len()
+                        * (std::mem::size_of::<String>() + std::mem::size_of::<u64>());
+
+                // new_alloc denotes the new allocation of the services hashmap.
+                let direct_alloc = std::mem::size_of::<String>()
+                    + std::mem::size_of::<HashMap<AppIdentifier, HashMap<String, u64>>>();
+                // Total value of the delta store memory allocation increase is equal to direct_alloc of the
+                // services hashmap + transitive allocation of the nested hashmaps.
+                delta_increase = direct_alloc + transitive_alloc;
             }
         }
         if self.config.flush_mode != FlushMode::Periodical {
-            self.request_count += 1;
-            if self.request_count == self.config.capacity {
+            info!(
+                "Delta store memory allocation increased by: {}",
+                delta_increase
+            );
+            self.memory_allocated += delta_increase;
+            if self.memory_allocated >= self.config.capacity as usize {
                 Ok(DeltaStoreState::Flush)
             } else {
                 Ok(DeltaStoreState::Ok)
@@ -99,25 +134,38 @@ impl DeltaStore {
         self.deltas.get_mut(&key)
     }
 
-    fn update_app_delta(app_delta: &mut HashMap<String, u64>, threescale: &ThreescaleData) -> bool {
+    fn update_app_delta(
+        app_delta: &mut HashMap<String, u64>,
+        threescale: &ThreescaleData,
+    ) -> usize {
+        let mut alloc: usize = 0;
         for (metric, value) in threescale.metrics.borrow().iter() {
             if app_delta.contains_key(metric) {
                 *app_delta.get_mut(metric).unwrap() += value;
             } else {
                 app_delta.insert(metric.to_string(), *value);
+                // memory allocation increase if a new metric is added.
+                alloc += std::mem::size_of::<String>() + std::mem::size_of::<u64>();
             }
         }
-        true
+        alloc
     }
 
     fn add_app_delta(
         service: &mut HashMap<AppIdentifier, HashMap<String, u64>>,
         threescale: &ThreescaleData,
-    ) -> bool {
+    ) -> usize {
         service.insert(
             threescale.app_id.clone(),
             threescale.metrics.borrow().clone(),
         );
-        true
+
+        let direct_alloc =
+            std::mem::size_of::<AppIdentifier>() + std::mem::size_of::<HashMap<String, u64>>();
+        // Transitive allocation of the metrics hashmap.
+        let transitive_alloc = threescale.metrics.borrow().len()
+            * (std::mem::size_of::<String>() + std::mem::size_of::<u64>());
+        // Total memory allocation as a summation of direct_alloc and transitive_alloc
+        direct_alloc + transitive_alloc
     }
 }

@@ -69,7 +69,7 @@ pub fn _start() {
             queue_id: None,
             delta_store: DeltaStore {
                 last_update: None,
-                request_count: 0,
+                memory_allocated: 0,
                 deltas: HashMap::new(),
                 config: DeltaStoreConfig::default(),
             },
@@ -319,7 +319,7 @@ impl SingletonService {
     ) -> HashMap<String, HashMap<AppIdentifier, HashMap<String, u64>>> {
         let deltas_cloned = self.delta_store.deltas.clone();
         self.delta_store.deltas.clear();
-        self.delta_store.request_count = 0;
+        self.delta_store.memory_allocated = 0;
         assert!(self.delta_store.deltas.is_empty());
         deltas_cloned
     }
@@ -407,7 +407,7 @@ impl SingletonService {
                                     ),
                                     window: Period::from(&usage.period),
                                 },
-                                left_hits: usage.current_value,
+                                left_hits: usage.max_value - usage.current_value,
                                 max_value: usage.max_value,
                             },
                         );
