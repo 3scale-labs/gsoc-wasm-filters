@@ -59,7 +59,7 @@ auth: ## Build threescale_wasm_auth filter.
 	cd threescale-wasm-auth && \
 	make clean && \
 	make build
-	cp threescale-wasm-auth/compose/wasm/$(BUILD)threescale_wasm_auth.wasm deployments/docker-compose/threescale_wasm_auth.wasm
+	cp threescale-wasm-auth/compose/wasm/threescale_wasm_auth.wasm deployments/docker-compose/threescale_wasm_auth.wasm
 
 apisonator: ## Runs apisonator and redis container
 	docker run -p 6379:6379 -d --name my-redis redis --databases 2
