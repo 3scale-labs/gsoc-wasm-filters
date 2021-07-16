@@ -24,3 +24,4 @@ bincode = "1.0"
 threescalers = { git = "https://github.com/3scale-rs/threescalers", branch = "master" }
 serde_xml = "0.9"
 thiserror = "1.0"
+url = { git = "https://github.com/3scale-rs/rust-url", branch = "3scale", features = ["serde"] }
