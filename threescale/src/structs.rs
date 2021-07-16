@@ -1,3 +1,4 @@
+use crate::upstream::Upstream;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -216,6 +217,7 @@ pub struct ThreescaleData {
     pub service_id: ServiceId,
     pub service_token: ServiceToken,
     pub metrics: Metrics,
+    pub upstream: Upstream,
 }
 
 impl Default for ThreescaleData {
@@ -225,6 +227,11 @@ impl Default for ThreescaleData {
             service_id: ServiceId("".to_owned()),
             service_token: ServiceToken("".to_owned()),
             metrics: RefCell::new(HashMap::new()),
+            upstream: Upstream {
+                name: "".to_owned(),
+                url: url::Url::parse("https://su1.su1.3scale.net/").unwrap(),
+                timeout: Duration::from_millis(1000),
+            },
         }
     }
 }
