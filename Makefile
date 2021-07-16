@@ -55,11 +55,11 @@ clean-apisonator:
 
 auth: ## Build threescale_wasm_auth filter. 
 	@echo "> Building threescale_wasm_auth filter"
-	git submodule update --init
+	git submodule foreach git pull origin main
 	cd threescale-wasm-auth && \
 	make clean && \
 	make build
-	cp threescale-wasm-auth/target/wasm32-unknown-unknown/$(BUILD)/threescale_wasm_auth.wasm deployments/docker-compose/threescale_wasm_auth.wasm
+	cp threescale-wasm-auth/compose/wasm/$(BUILD)threescale_wasm_auth.wasm deployments/docker-compose/threescale_wasm_auth.wasm
 
 apisonator: ## Runs apisonator and redis container
 	docker run -p 6379:6379 -d --name my-redis redis --databases 2
@@ -83,7 +83,7 @@ integration: local-services
 	rm -rf integration-tests/artifacts
 	docker-compose -f integration-tests/docker-compose.yaml down
 
-run:
+run: clean-apisonator
 	@echo "> Starting services"
 	docker-compose -f deployments/docker-compose/docker-compose.yaml up --build
 
