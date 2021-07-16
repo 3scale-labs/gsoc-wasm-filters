@@ -9,7 +9,7 @@ use proxy_wasm::{
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::str::FromStr;
 use std::time::{Duration, UNIX_EPOCH};
 use std::vec;
@@ -19,6 +19,7 @@ use threescale::{
         CacheKey,
     },
     structs::*,
+    upstream::*,
     utils::*,
 };
 use threescalers::response::{Authorization, AuthorizationStatus};
@@ -66,6 +67,14 @@ pub enum RequestDataError {
     DeserializeFail(#[from] serde_json::Error),
     #[error("no authentication pattern provided in the request metadata")]
     AuthKeyMissing,
+    #[error("cluster name not found inside request metadata")]
+    ClusterNameNotFound,
+    #[error("upstream url not found inside request metadata")]
+    UpstreamUrlNotFound,
+    #[error("failed to parse upstream url")]
+    UpstreamUrlParseFail(#[from] url::ParseError),
+    #[error("failed to initialize upstream builder")]
+    UpstreamBuilderFail(#[from] threescalers::Error),
 }
 
 pub struct CacheFilter {
@@ -320,6 +329,23 @@ impl CacheFilter {
         let usage_str = self
             .get_http_request_header("x-3scale-usages")
             .ok_or(RequestDataError::UsageNotFound)?;
+
+        let cluster_name = self
+            .get_http_request_header("x-3scale-cluster-name")
+            .ok_or(RequestDataError::ClusterNameNotFound)?;
+
+        let upstream_url = self
+            .get_http_request_header("x-3scale-upstream-url")
+            .ok_or(RequestDataError::UpstreamUrlNotFound)?;
+        let parsed_url = url::Url::parse(&upstream_url)?;
+
+        let timeout = match self.get_http_request_header("x-3scale-timeout") {
+            Some(time_str) => time_str.parse::<u64>().ok(),
+            None => None,
+        };
+
+        let upstream_builder = Builder::try_from(parsed_url)?;
+
         let usages = serde_json::from_str::<std::collections::HashMap<String, u64>>(&usage_str)?;
 
         let app_id;
@@ -338,6 +364,7 @@ impl CacheFilter {
             service_id: ServiceId::from(service_id.as_ref()),
             service_token: ServiceToken::from(service_token.as_ref()),
             metrics: RefCell::new(usages),
+            upstream: upstream_builder.build(&cluster_name, timeout),
         })
     }
 }
