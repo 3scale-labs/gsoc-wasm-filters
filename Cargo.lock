@@ -41,6 +41,7 @@ dependencies = [
  "thiserror",
  "threescale",
  "threescalers",
+ "url",
 ]
 
 [[package]]

@@ -84,7 +84,7 @@ pub fn do_auth_call<C: HttpContext>(
         .collect::<Vec<_>>();
 
     info!("App : {:?}", apicall);
-    match filter.config.upstream.call(
+    match request_data.upstream.call(
         ctx,
         uri.as_ref(),
         request.method.as_str(),
