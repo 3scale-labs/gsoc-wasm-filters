@@ -1,8 +1,12 @@
 FROM envoyproxy/envoy:v1.18.3
 
+ARG ENVOY_YAML
+
+RUN echo $ENVOY_YAML
+
 # Used to create the proxy instance for integration tests. envoy.yaml template should be 
 # populated with keys before using it here.
-COPY ./envoy.yaml /etc/envoy/envoy.yaml
+COPY $ENVOY_YAML /etc/envoy/envoy.yaml
 
 # Copying build artifacts.
 COPY ./artifacts/cache_filter.wasm /usr/local/bin/cache_filter.wasm
