@@ -14,14 +14,14 @@ pub fn _start() {
     }));
     proxy_wasm::set_root_context(|context_id| -> Box<dyn RootContext> {
         Box::new(CacheFilterRoot {
-            context_id,
+            context_id: (context_id as usize),
             config: FilterConfig::default(),
         })
     });
 }
 
 struct CacheFilterRoot {
-    context_id: u32,
+    context_id: usize,
     config: FilterConfig,
 }
 
