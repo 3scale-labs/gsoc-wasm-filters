@@ -14,20 +14,20 @@ pub fn _start() {
     }));
     proxy_wasm::set_root_context(|context_id| -> Box<dyn RootContext> {
         Box::new(CacheFilterRoot {
-            context_id: (context_id as usize),
+            context_id,
             config: FilterConfig::default(),
         })
     });
 }
 
 struct CacheFilterRoot {
-    context_id: usize,
+    context_id: u32,
     config: FilterConfig,
 }
 
 impl RootContext for CacheFilterRoot {
     fn on_vm_start(&mut self, _vm_configuration_size: usize) -> bool {
-        info!(context: self.context_id, "VM started");
+        info!(self.context_id, "VM started");
         true
     }
 
@@ -37,7 +37,7 @@ impl RootContext for CacheFilterRoot {
             Some(c) => c,
             None => {
                 warn!(
-                    context: self.context_id,
+                    self.context_id,
                     "Configuration missing. Please check the envoy.yaml file for filter configuration"
                 );
                 return true;
@@ -47,12 +47,15 @@ impl RootContext for CacheFilterRoot {
         // Parse and store the configuration passed by envoy.yaml
         match serde_json::from_slice::<FilterConfig>(configuration.as_ref()) {
             Ok(config) => {
-                debug!(context: self.context_id, "configuring with: {:?}", config);
+                debug!(self.context_id, "configuring with: {:?}", config);
                 self.config = config;
                 true
             }
             Err(e) => {
-                warn!(context: self.context_id, "Failed to parse envoy.yaml configuration: {:?}", e);
+                warn!(
+                    self.context_id,
+                    "Failed to parse envoy.yaml configuration: {:?}", e
+                );
                 true
             }
         }
@@ -60,7 +63,7 @@ impl RootContext for CacheFilterRoot {
 
     fn create_http_context(&self, context: u32) -> Option<Box<dyn HttpContext>> {
         Some(Box::new(CacheFilter {
-            context_id: context as usize,
+            context_id: context,
             config: self.config.clone(),
             update_cache_from_singleton: false,
             cache_key: CacheKey::default(),

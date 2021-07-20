@@ -78,7 +78,7 @@ pub enum RequestDataError {
 }
 
 pub struct CacheFilter {
-    pub context_id: usize,
+    pub context_id: u32,
     pub config: FilterConfig,
     pub update_cache_from_singleton: bool,
     pub cache_key: CacheKey,
@@ -87,13 +87,24 @@ pub struct CacheFilter {
 }
 
 impl HttpContext for CacheFilter {
-    fn on_http_request_headers(&mut self, context_id: usize) -> Action {
+    fn on_http_request_headers(&mut self, _: usize) -> Action {
         let mut request_data = match self.get_request_data() {
             Ok(data) => data,
             Err(e) => {
-                debug!(context: context_id, "fetching request data failed: {}", e);
+                debug!(self.context_id, "fetching request data failed: {}", e);
+
                 // Send back local response for not providing relevant request data
-                self.send_http_response(401, vec![], None);
+                if cfg!(feature = "visible_logs") {
+                    #[cfg(feature = "visible_logs")]
+                    {
+                        let (key, val) =
+                            crate::log::visible_logs::get_logs_header_pair(self.context_id);
+                        self.send_http_response(401, vec![(key.as_ref(), val.as_ref())], None);
+                    }
+                } else {
+                    self.send_http_response(401, vec![], None);
+                }
+
                 return Action::Pause;
             }
         };
@@ -110,7 +121,7 @@ impl HttpContext for CacheFilter {
                 }
                 Err(e) => {
                     debug!(
-                        context: context_id,
+                        self.context_id,
                         "failed to get app_id for user_key from cache: {:?}", e
                     );
                     // TODO: avoid multiple calls for identical requests
@@ -121,18 +132,18 @@ impl HttpContext for CacheFilter {
 
         match get_application_from_cache(&self.cache_key) {
             Ok((mut app, cas)) => {
-                info!(context: context_id, "cache hit");
+                info!(self.context_id, "cache hit");
 
                 match self.handle_cache_hit(&mut app, cas) {
                     Ok(()) => Action::Continue,
                     Err(e) => {
-                        warn!(context: context_id, "cache hit flow failed: {}", e);
+                        warn!(self.context_id, "cache hit flow failed: {}", e);
                         in_request_failure(self, self)
                     }
                 }
             }
             Err(e) => {
-                info!(context: context_id, "cache miss: {}", e);
+                info!(self.context_id, "cache miss: {}", e);
                 // TODO: Avoid multiple calls for same application
                 // saving request data to use when there is response from 3scale
                 // fetching new application state using authorize endpoint
@@ -149,9 +160,8 @@ impl CacheFilter {
         if let Err(e) = self.enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap()))
         {
             warn!(
-                context: self.context_id,
-                "enqueuing to message queue failed: {:?}",
-                e
+                self.context_id,
+                "enqueuing to message queue failed: {:?}", e
             );
             return false;
         }
@@ -180,7 +190,7 @@ impl CacheFilter {
             match limit_check_and_update_application(&self.req_data, app, app_cas, &current_time) {
                 Ok(()) => {
                     // App is not rate-limited and updated in cache.
-                    info!(context: self.context_id, "request is allowed to pass the filter");
+                    info!(self.context_id, "request is allowed to pass the filter");
                     if !self.report_to_singleton(queue_id, &current_time) {
                         // TODO: Handle MQ failure here
                         // Update local cache
@@ -191,7 +201,7 @@ impl CacheFilter {
                     break;
                 }
                 Err(UpdateMetricsError::RateLimited) => {
-                    info!(context: self.context_id, "request is rate-limited");
+                    info!(self.context_id, "request is rate-limited");
                     self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
                     // no need to retry if already rate-limted
                     rate_limited = true;
@@ -199,7 +209,7 @@ impl CacheFilter {
                 }
                 Err(UpdateMetricsError::CacheUpdateFail) => {
                     info!(
-                        context: self.context_id,
+                        self.context_id,
                         "try ({} out of {}): failed to set application to cache",
                         (num_try as u64) + 1,
                         max_tries
@@ -365,14 +375,21 @@ impl CacheFilter {
             upstream: upstream_builder.build(&cluster_name, timeout),
         })
     }
+
+    #[cfg(feature = "visible_logs")]
+    #[allow(dead_code)]
+    fn on_http_response_header(&mut self, _: usize) -> Action {
+        let (key, val) = crate::log::visible_logs::get_logs_header_pair(self.context_id);
+        self.add_http_response_header(key.as_ref(), val.as_ref());
+        Action::Continue
+    }
 }
 
 impl Context for CacheFilter {
     fn on_http_call_response(&mut self, token_id: u32, _: usize, body_size: usize, _: usize) {
         info!(
-            context: self.context_id,
-            "received response from 3scale: token: {}",
-            token_id
+            self.context_id,
+            "received response from 3scale: token: {}", token_id
         );
         match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => {
@@ -380,12 +397,19 @@ impl Context for CacheFilter {
                     Ok(Authorization::Status(response)) => {
                         if response.is_authorized() || response.usage_reports().is_some() {
                             if let Err(e) = self.handle_auth_response(&response) {
-                                warn!(
-                                    context: self.context_id,
-                                    "handling auth response failed: {:?}",
-                                    e
-                                );
+                                warn!(self.context_id, "handling auth response failed: {:?}", e);
                                 request_process_failure(self, self)
+                            }
+                        } else if cfg!(feature = "visible_logs") {
+                            #[cfg(feature = "visible_logs")]
+                            {
+                                let (key, val) =
+                                    crate::log::visible_logs::get_logs_header_pair(self.context_id);
+                                self.send_http_response(
+                                    403,
+                                    vec![(key.as_ref(), val.as_ref())],
+                                    Some(response.reason().unwrap().as_bytes()),
+                                );
                             }
                         } else {
                             self.send_http_response(
@@ -397,7 +421,7 @@ impl Context for CacheFilter {
                     }
                     Ok(Authorization::Error(auth_error)) => {
                         info!(
-                            context: self.context_id,
+                            self.context_id,
                             "authorization error with code: {}",
                             auth_error.code()
                         );
@@ -406,9 +430,10 @@ impl Context for CacheFilter {
                     }
                     Err(e) => {
                         info!(
-                            context: self.context_id,
+                            self.context_id,
                             "parsing response from 3scale failed: {:#?} with token: {}",
-                            e, token_id
+                            e,
+                            token_id
                         );
                         request_process_failure(self, self);
                         return;
@@ -416,31 +441,17 @@ impl Context for CacheFilter {
                 }
 
                 info!(
-                    context: self.context_id,
-                    "data received and parsed from callout with token :{}",
-                    token_id
+                    self.context_id,
+                    "data received and parsed from callout with token :{}", token_id
                 );
             }
             None => {
                 info!(
-                    context: self.context_id,
-                    "Found nothing in the response with token: {}",
-                    token_id);
+                    self.context_id,
+                    "Found nothing in the response with token: {}", token_id
+                );
                 request_process_failure(self, self);
             }
         }
-    }
-
-    #[cfg(feature = "visible-logs")]
-    fn on_http_response_header(&mut self, _: usize) -> Action {
-        STORED_LOGS.with(|container| {
-            let stored_logs = (*container.borrow()).get(self.context_id);
-            if stored_logs.is_none() {
-                return Action::Continue;
-            }
-            let serialized_logs = serde_json::to_string(stored_logs.unwrap());
-            self.add_http_response_header("filter-logs", serialized_logs);
-            (*container.borrow_mut()).get(self.context_id).clear()
-        })
     }
 }
