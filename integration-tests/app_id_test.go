@@ -22,8 +22,8 @@ type AppCredentialTestSuite struct {
 }
 
 func (suite *AppCredentialTestSuite) SetupSuite() {
-	err := StartProxy("./")
-	require.Nilf(suite.T(), err, "Error starting docker-compose: %v", err)
+	err := StartProxy("./", "./envoy.yaml")
+	require.Nilf(suite.T(), err, "Error starting proxy: %v", err)
 	// Initializing 3scale backend state
 	suite.AppID = "test_app_id"
 	suite.AppKey = "test_app_key"
@@ -39,29 +39,24 @@ func (suite *AppCredentialTestSuite) SetupSuite() {
 			{Month, 10000},
 		}},
 	}
-	if err := CreateService(suite.ServiceID, suite.ServiceToken); err != nil {
-		suite.Errorf(err, "Error creating a service: %v")
-		return
-	}
-	if err := AddApplication(suite.ServiceID, suite.AppID, suite.PlanID); err != nil {
-		suite.Errorf(err, "Error adding an application: %v")
-		return
-	}
-	if err := AddUserKey(suite.ServiceID, suite.AppID, suite.UserKey); err != nil {
-		suite.Errorf(err, "Error adding a user key: %v")
-	}
-	if err := AddApplicationKey(suite.ServiceID, suite.AppID, suite.AppKey); err != nil {
-		suite.Errorf(err, "Error adding application key: %v")
-		return
-	}
-	if err := AddMetrics(suite.ServiceID, &suite.metrics); err != nil {
-		suite.Errorf(err, "Error adding metrics: %v")
-		return
-	}
-	if err := UpdateUsageLimits(suite.ServiceID, suite.PlanID, &suite.metrics); err != nil {
-		suite.Errorf(err, "Error updating usage limits: %v")
-		return
-	}
+	serviceErr := CreateService(suite.ServiceID, suite.ServiceToken)
+	require.Nilf(suite.T(), serviceErr, "Error: %v", serviceErr)
+
+	appErr := AddApplication(suite.ServiceID, suite.AppID, suite.PlanID)
+	require.Nilf(suite.T(), appErr, "Error: %v", appErr)
+
+	userErr := AddUserKey(suite.ServiceID, suite.AppID, suite.UserKey)
+	require.Nilf(suite.T(), userErr, "Error: %v", userErr)
+
+	appKeyErr := AddApplicationKey(suite.ServiceID, suite.AppID, suite.AppKey)
+	require.Nilf(suite.T(), appKeyErr, "Error: %v", appKeyErr)
+
+	metricsErr := AddMetrics(suite.ServiceID, &suite.metrics)
+	require.Nilf(suite.T(), metricsErr, "Error: %v", metricsErr)
+
+	usageErr := UpdateUsageLimits(suite.ServiceID, suite.PlanID, &suite.metrics)
+	require.Nilf(suite.T(), usageErr, "Error: %v", usageErr)
+
 }
 
 func TestAppCredentialSuite(t *testing.T) {
@@ -70,30 +65,28 @@ func TestAppCredentialSuite(t *testing.T) {
 }
 
 func (suite *AppCredentialTestSuite) TearDownSuite() {
-	fmt.Println("Cleaning 3scale backend state")
-	if err := DeleteService(suite.ServiceID, suite.ServiceToken); err != nil {
-		suite.Errorf(err, "Failed to delete service: %v")
-	}
-	if err := DeleteApplication(suite.ServiceID, suite.AppID); err != nil {
-		suite.Errorf(err, "Failed to delete applications: %v")
-	}
-	if err := DeleteApplicationKey(suite.ServiceID, suite.AppID, suite.AppKey); err != nil {
-		suite.Errorf(err, "Failed to delete Application key: %v")
-	}
-	if err := DeleteUserKey(suite.ServiceID, suite.AppID, suite.UserKey); err != nil {
-		suite.Errorf(err, "Failed to delete Application's user key: %v")
-	}
-	if err := DeleteMetrics(suite.ServiceID, &suite.metrics); err != nil {
-		suite.Errorf(err, "Failed to delete metrics: %v")
-	}
-	if err := DeleteUsageLimits(suite.ServiceID, suite.PlanID, &suite.metrics); err != nil {
-		suite.Errorf(err, "Failed to delete usage limits")
-	}
 	fmt.Println("Stopping AppCredentialTestSuite")
-
 	if err := StopProxy(); err != nil {
 		fmt.Printf("Error stoping docker: %v", err)
 	}
+	fmt.Println("Cleaning 3scale backend state")
+	serviceErr := DeleteService(suite.ServiceID, suite.ServiceToken)
+	require.Nilf(suite.T(), serviceErr, "Error: %v", serviceErr)
+
+	appKeyErr := DeleteApplicationKey(suite.ServiceID, suite.AppID, suite.AppKey)
+	require.Nilf(suite.T(), appKeyErr, "Error: %v", appKeyErr)
+
+	userKeyErr := DeleteUserKey(suite.ServiceID, suite.AppID, suite.UserKey)
+	require.Nilf(suite.T(), userKeyErr, "Error: %v", userKeyErr)
+
+	appErr := DeleteApplication(suite.ServiceID, suite.AppID)
+	require.Nilf(suite.T(), appErr, "Error: %v", appErr)
+
+	metricsErr := DeleteMetrics(suite.ServiceID, &suite.metrics)
+	require.Nilf(suite.T(), metricsErr, "Error: %v", metricsErr)
+
+	usageErr := DeleteUsageLimits(suite.ServiceID, suite.PlanID, &suite.metrics)
+	require.Nilf(suite.T(), usageErr, "Error: %v", usageErr)
 }
 
 func (suite *AppCredentialTestSuite) TestAppIdSuccess() {

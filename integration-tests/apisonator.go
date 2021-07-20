@@ -154,7 +154,7 @@ func AddApplication(serviceID string, appID string, planID string) error {
 
 // DeleteApplication deletes an application.
 func DeleteApplication(serviceID string, appID string) error {
-	url := InternalURL + "/services/" + serviceID + "/applications" + serviceID
+	url := InternalURL + "/services/" + serviceID + "/applications/" + appID
 	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
@@ -186,7 +186,7 @@ func AddApplicationKey(serviceID string, appID string, key string) error {
 
 // DeleteApplicationKey deletes an application key
 func DeleteApplicationKey(serviceID string, appID string, key string) error {
-	url := InternalURL + "/services/" + serviceID + "/applications" + appID + "/keys/" + key
+	url := InternalURL + "/services/" + serviceID + "/applications/" + appID + "/keys/" + key
 	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
@@ -212,7 +212,7 @@ func AddUserKey(serviceID string, appID string, key string) error {
 
 // DeleteUserKey deletes a user key
 func DeleteUserKey(serviceID string, appID string, key string) error {
-	url := InternalURL + "/services/" + serviceID + "/applications/key" + key
+	url := InternalURL + "/services/" + serviceID + "/applications/key/" + key
 	res, err := executeHTTPRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
