@@ -430,4 +430,17 @@ impl Context for CacheFilter {
             }
         }
     }
+
+    #[cfg(feature = "visible-logs")]
+    fn on_http_response_header(&mut self, _: usize) -> Action {
+        STORED_LOGS.with(|container| {
+            let stored_logs = (*container.borrow()).get(self.context_id);
+            if stored_logs.is_none() {
+                return Action::Continue;
+            }
+            let serialized_logs = serde_json::to_string(stored_logs.unwrap());
+            self.add_http_response_header("filter-logs", serialized_logs);
+            (*container.borrow_mut()).get(self.context_id).clear()
+        })
+    }
 }
