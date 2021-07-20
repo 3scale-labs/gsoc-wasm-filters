@@ -12,8 +12,8 @@ func main() {
 }
 
 // StartProxy build and starts the proxy in a docker container.
-func StartProxy(dockerfile string) error {
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("docker build -t proxy -f %s/Dockerfile --no-cache . && docker run -d -p 9095:9095 --network envoymesh --name envoy-proxy-test proxy", dockerfile))
+func StartProxy(dockerfile string, envoy string) error {
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("docker build -t proxy -f %s/Dockerfile --build-arg ENVOY_YAML=%s --no-cache . && docker run -d -p 9095:9095 --network envoymesh --name envoy-proxy-test proxy", dockerfile, envoy))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
