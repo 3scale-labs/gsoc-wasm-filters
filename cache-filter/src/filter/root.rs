@@ -1,6 +1,6 @@
 use crate::configuration::FilterConfig;
 use crate::filter::http::CacheFilter;
-use log::{debug, info, warn};
+use crate::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
     types::{ContextType, LogLevel},
@@ -9,7 +9,9 @@ use threescale::{proxy::CacheKey, structs::ThreescaleData};
 
 #[no_mangle]
 pub fn _start() {
-    proxy_wasm::set_log_level(LogLevel::Trace);
+    std::panic::set_hook(Box::new(|panic_info| {
+        proxy_wasm::hostcalls::log(LogLevel::Critical, &panic_info.to_string()).unwrap();
+    }));
     proxy_wasm::set_root_context(|context_id| -> Box<dyn RootContext> {
         Box::new(CacheFilterRoot {
             context_id,
@@ -25,7 +27,7 @@ struct CacheFilterRoot {
 
 impl RootContext for CacheFilterRoot {
     fn on_vm_start(&mut self, _vm_configuration_size: usize) -> bool {
-        info!("VM started");
+        info!(context: self.context_id, "VM started");
         true
     }
 
@@ -34,7 +36,10 @@ impl RootContext for CacheFilterRoot {
         let configuration: Vec<u8> = match self.get_configuration() {
             Some(c) => c,
             None => {
-                warn!("Configuration missing. Please check the envoy.yaml file for filter configuration");
+                warn!(
+                    context: self.context_id,
+                    "Configuration missing. Please check the envoy.yaml file for filter configuration"
+                );
                 return true;
             }
         };
@@ -42,12 +47,12 @@ impl RootContext for CacheFilterRoot {
         // Parse and store the configuration passed by envoy.yaml
         match serde_json::from_slice::<FilterConfig>(configuration.as_ref()) {
             Ok(config) => {
-                debug!("configuring {}: {:?}", self.context_id, config);
+                debug!(context: self.context_id, "configuring with: {:?}", config);
                 self.config = config;
                 true
             }
             Err(e) => {
-                warn!("Failed to parse envoy.yaml configuration: {:?}", e);
+                warn!(context: self.context_id, "Failed to parse envoy.yaml configuration: {:?}", e);
                 true
             }
         }
@@ -55,7 +60,7 @@ impl RootContext for CacheFilterRoot {
 
     fn create_http_context(&self, context: u32) -> Option<Box<dyn HttpContext>> {
         Some(Box::new(CacheFilter {
-            context_id: context,
+            context_id: context as usize,
             config: self.config.clone(),
             update_cache_from_singleton: false,
             cache_key: CacheKey::default(),
