@@ -2,7 +2,7 @@ use crate::{
     configuration::FilterConfig,
     utils::{do_auth_call, in_request_failure, request_process_failure},
 };
-use log::{debug, info, warn};
+use crate::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext},
     types::Action,
@@ -78,7 +78,7 @@ pub enum RequestDataError {
 }
 
 pub struct CacheFilter {
-    pub context_id: u32,
+    pub context_id: usize,
     pub config: FilterConfig,
     pub update_cache_from_singleton: bool,
     pub cache_key: CacheKey,
@@ -91,7 +91,7 @@ impl HttpContext for CacheFilter {
         let mut request_data = match self.get_request_data() {
             Ok(data) => data,
             Err(e) => {
-                debug!("ctxt {}: fetching request data failed: {}", e, context_id);
+                debug!(context: context_id, "fetching request data failed: {}", e);
                 // Send back local response for not providing relevant request data
                 self.send_http_response(401, vec![], None);
                 return Action::Pause;
@@ -110,8 +110,8 @@ impl HttpContext for CacheFilter {
                 }
                 Err(e) => {
                     debug!(
-                        "ctxt {}: failed to get app_id for user_key from cache: {:?}",
-                        context_id, e
+                        context: context_id,
+                        "failed to get app_id for user_key from cache: {:?}", e
                     );
                     // TODO: avoid multiple calls for identical requests
                     return do_auth_call(self, self, &request_data);
@@ -121,18 +121,18 @@ impl HttpContext for CacheFilter {
 
         match get_application_from_cache(&self.cache_key) {
             Ok((mut app, cas)) => {
-                info!("ctxt {}: cache hit", context_id);
+                info!(context: context_id, "cache hit");
 
                 match self.handle_cache_hit(&mut app, cas) {
                     Ok(()) => Action::Continue,
                     Err(e) => {
-                        warn!("ctxt {}: cache hit flow failed: {:#?}", context_id, e);
+                        warn!(context: context_id, "cache hit flow failed: {}", e);
                         in_request_failure(self, self)
                     }
                 }
             }
             Err(e) => {
-                info!("ctxt {}: cache miss: {}", context_id, e);
+                info!(context: context_id, "cache miss: {}", e);
                 // TODO: Avoid multiple calls for same application
                 // saving request data to use when there is response from 3scale
                 // fetching new application state using authorize endpoint
@@ -149,8 +149,9 @@ impl CacheFilter {
         if let Err(e) = self.enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap()))
         {
             warn!(
-                "ctxt {}: enqueuing to message queue failed: {:?}",
-                self.context_id, e
+                context: self.context_id,
+                "enqueuing to message queue failed: {:?}",
+                e
             );
             return false;
         }
@@ -179,10 +180,7 @@ impl CacheFilter {
             match limit_check_and_update_application(&self.req_data, app, app_cas, &current_time) {
                 Ok(()) => {
                     // App is not rate-limited and updated in cache.
-                    info!(
-                        "ctxt {}: request is allowed to pass the filter",
-                        self.context_id
-                    );
+                    info!(context: self.context_id, "request is allowed to pass the filter");
                     if !self.report_to_singleton(queue_id, &current_time) {
                         // TODO: Handle MQ failure here
                         // Update local cache
@@ -193,7 +191,7 @@ impl CacheFilter {
                     break;
                 }
                 Err(UpdateMetricsError::RateLimited) => {
-                    info!("ctxt {}: request is rate-limited", self.context_id);
+                    info!(context: self.context_id, "request is rate-limited");
                     self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
                     // no need to retry if already rate-limted
                     rate_limited = true;
@@ -201,8 +199,8 @@ impl CacheFilter {
                 }
                 Err(UpdateMetricsError::CacheUpdateFail) => {
                     info!(
-                        "ctxt {}: try ({} out of {}): failed to set application to cache",
-                        self.context_id,
+                        context: self.context_id,
+                        "try ({} out of {}): failed to set application to cache",
                         (num_try as u64) + 1,
                         max_tries
                     );
@@ -372,8 +370,9 @@ impl CacheFilter {
 impl Context for CacheFilter {
     fn on_http_call_response(&mut self, token_id: u32, _: usize, body_size: usize, _: usize) {
         info!(
-            "ctxt {}: received response from 3scale: token: {}",
-            self.context_id, token_id
+            context: self.context_id,
+            "received response from 3scale: token: {}",
+            token_id
         );
         match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => {
@@ -382,8 +381,9 @@ impl Context for CacheFilter {
                         if response.is_authorized() || response.usage_reports().is_some() {
                             if let Err(e) = self.handle_auth_response(&response) {
                                 warn!(
-                                    "ctxt {}: handling auth response failed: {:?}",
-                                    self.context_id, e
+                                    context: self.context_id,
+                                    "handling auth response failed: {:?}",
+                                    e
                                 );
                                 request_process_failure(self, self)
                             }
@@ -396,12 +396,17 @@ impl Context for CacheFilter {
                         }
                     }
                     Ok(Authorization::Error(auth_error)) => {
-                        info!("authorization error with code: {}", auth_error.code());
+                        info!(
+                            context: self.context_id,
+                            "authorization error with code: {}",
+                            auth_error.code()
+                        );
                         request_process_failure(self, self);
                         return;
                     }
                     Err(e) => {
                         info!(
+                            context: self.context_id,
                             "parsing response from 3scale failed: {:#?} with token: {}",
                             e, token_id
                         );
@@ -411,12 +416,16 @@ impl Context for CacheFilter {
                 }
 
                 info!(
+                    context: self.context_id,
                     "data received and parsed from callout with token :{}",
                     token_id
                 );
             }
             None => {
-                info!("Found nothing in the response with token: {}", token_id);
+                info!(
+                    context: self.context_id,
+                    "Found nothing in the response with token: {}",
+                    token_id);
                 request_process_failure(self, self);
             }
         }
