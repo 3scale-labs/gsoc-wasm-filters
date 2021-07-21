@@ -24,7 +24,7 @@ jobs:
             # MSRV
           - 1.52.1
         experimental: [false]
-        cargo_flags: [--all-features]
+        cargo_flags: ['',--all-features]
         include:
           # Stop breakages in nightly to fail the workflow
           - rust: nightly
