@@ -68,7 +68,7 @@ apisonator: ## Runs apisonator and redis container
             -e CONFIG_INTERNAL_API_PASSWORD=root -p 3000:3000 -d --link my-redis:redis \
             --name apisonator quay.io/3scale/apisonator 3scale_backend start
 
-local-services:
+local-services: clean-apisonator
 	@echo "> Starting local services for integration tests"
 	docker-compose -f integration-tests/docker-compose.yaml up --build -d
 

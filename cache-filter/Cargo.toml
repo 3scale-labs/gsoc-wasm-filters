@@ -13,6 +13,9 @@ categories = ["cache filter"]
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+visible_logs = []
+
 [dependencies]
 threescale = { path = "../threescale" }
 serde = { version = "1.0", features = ["derive"] }
