@@ -40,22 +40,22 @@ func (suite *AppCredentialTestSuite) SetupSuite() {
 			{Month, 10000},
 		}},
 	}
-	serviceErr := suite.backend.CreateService(suite.ServiceID, suite.ServiceToken)
+	serviceErr := suite.backend.Push("service", []interface{}{suite.ServiceID, suite.ServiceToken})
 	require.Nilf(suite.T(), serviceErr, "Error: %v", serviceErr)
 
-	appErr := suite.backend.AddApplication(suite.ServiceID, suite.AppID, suite.PlanID)
+	appErr := suite.backend.Push("app", []interface{}{suite.ServiceID, suite.AppID, suite.PlanID})
 	require.Nilf(suite.T(), appErr, "Error: %v", appErr)
 
-	userErr := suite.backend.AddUserKey(suite.ServiceID, suite.AppID, suite.UserKey)
+	userErr := suite.backend.Push("user_key", []interface{}{suite.ServiceID, suite.AppID, suite.UserKey})
 	require.Nilf(suite.T(), userErr, "Error: %v", userErr)
 
-	appKeyErr := suite.backend.AddApplicationKey(suite.ServiceID, suite.AppID, suite.AppKey)
+	appKeyErr := suite.backend.Push("app_key", []interface{}{suite.ServiceID, suite.AppID, suite.AppKey})
 	require.Nilf(suite.T(), appKeyErr, "Error: %v", appKeyErr)
 
-	metricsErr := suite.backend.AddMetrics(suite.ServiceID, &suite.metrics)
+	metricsErr := suite.backend.Push("metrics", []interface{}{suite.ServiceID, &suite.metrics})
 	require.Nilf(suite.T(), metricsErr, "Error: %v", metricsErr)
 
-	usageErr := suite.backend.UpdateUsageLimits(suite.ServiceID, suite.PlanID, &suite.metrics)
+	usageErr := suite.backend.Push("usages", []interface{}{suite.ServiceID, suite.PlanID, &suite.metrics})
 	require.Nilf(suite.T(), usageErr, "Error: %v", usageErr)
 
 }
@@ -133,12 +133,11 @@ func (suite *AppCredentialTestSuite) TestUserKeyForbidden() {
 
 func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
 	// Add a new unlimited app
-	if err := suite.backend.AddApplication(suite.ServiceID, "unlimited_app_id", suite.PlanID); err != nil {
-		suite.Errorf(err, "Error adding an application: %v")
-		return
+	if err := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited_app_id", suite.PlanID}); err != nil {
+		require.Nilf(suite.T(), err, "Error adding an application: %v", err)
 	}
-	if err := suite.backend.AddUserKey(suite.ServiceID, "unlimited_app_id", suite.UserKey); err != nil {
-		suite.Errorf(err, "Error adding a user key: %v")
+	if err := suite.backend.Push("user_key", []interface{}{suite.ServiceID, "unlimited_app_id", suite.UserKey}); err != nil {
+		require.Nilf(suite.T(), err, "Error adding a user key: %v", err)
 	}
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
@@ -152,18 +151,17 @@ func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for user_key unlimited test: %v", res.StatusCode)
 
 	if err := suite.backend.Pop(); err != nil {
-		suite.Errorf(err, "Failed to delete Application's user key: %v")
+		require.Nilf(suite.T(), err, "Failed to delete Application's user key: %v", err)
 	}
 	if err := suite.backend.Pop(); err != nil {
-		suite.Errorf(err, "Failed to delete applications: %v")
+		require.Nilf(suite.T(), err, "Failed to delete applications: %v", err)
 	}
 }
 
 func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
 	// Add a new unlimited app
-	if err := suite.backend.AddApplication(suite.ServiceID, "unlimited_app_id", suite.PlanID); err != nil {
-		suite.Errorf(err, "Error adding an application: %v")
-		return
+	if err := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited_app_id", suite.PlanID}); err != nil {
+		require.Nilf(suite.T(), err, "Error adding an application: %v", err)
 	}
 
 	client := &http.Client{}
@@ -179,6 +177,6 @@ func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for appId unlimited test: %d", res.StatusCode)
 
 	if err := suite.backend.Pop(); err != nil {
-		suite.Errorf(err, "Failed to delete applications: %v")
+		require.Nilf(suite.T(), err, "Failed to delete applications: %v", err)
 	}
 }
