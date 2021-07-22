@@ -8,7 +8,6 @@ import (
 	"net/http"
 )
 
-
 // BackendState represents the Apisonator internal state
 type BackendState struct {
 	name   string
