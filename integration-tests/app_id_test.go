@@ -26,12 +26,12 @@ func (suite *AppCredentialTestSuite) SetupSuite() {
 	err := StartProxy("./", "./envoy.yaml")
 	require.Nilf(suite.T(), err, "Error starting proxy: %v", err)
 	// Initializing 3scale backend state
-	suite.AppID = "test_app_id"
-	suite.AppKey = "test_app_key"
-	suite.UserKey = "test_user_key"
-	suite.ServiceID = "test_service_id"
-	suite.PlanID = "test_plan_id"
-	suite.ServiceToken = "test_service_token"
+	suite.AppID = "test-app-id"
+	suite.AppKey = "test-app-key"
+	suite.UserKey = "test-user-key"
+	suite.ServiceID = "test-service-id"
+	suite.PlanID = "test-plan-id"
+	suite.ServiceToken = "test-service-token"
 	suite.metrics = []Metric{
 		{"hits", "1", []UsageLimit{
 			{Day, 10000},
@@ -96,7 +96,7 @@ func (suite *AppCredentialTestSuite) TestAppIdForbidden() {
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
 		"Host":      []string{"localhost"},
-		"x-app-id":  []string{"wrong_app_id"},
+		"x-app-id":  []string{"wrong-app-id"},
 		"x-app-key": []string{suite.AppKey},
 	}
 	res, errHTTP := client.Do(req)
@@ -123,7 +123,7 @@ func (suite *AppCredentialTestSuite) TestUserKeyForbidden() {
 	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	q := req.URL.Query()
-	q.Add("api_key", "wrong_user_key")
+	q.Add("api_key", "wrong-user-key")
 	req.URL.RawQuery = q.Encode()
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
@@ -169,7 +169,7 @@ func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
 		"Host":     []string{"localhost"},
-		"x-app-id": []string{"unlimited_app_id"},
+		"x-app-id": []string{"unlimited-app-id"},
 	}
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
