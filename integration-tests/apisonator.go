@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -64,6 +65,24 @@ type Metric struct {
 	name   string
 	id     string
 	limits []UsageLimit
+}
+
+// UsageReport represents the usage report of a particular metric.
+type UsageReport struct {
+	Metric  string `xml:"metric,attr"`
+	Period  string `xml:"period,attr"`
+	Start   string `xml:"period_start"`
+	End     string `xml:"period_end"`
+	Max     int64  `xml:"max_value"`
+	Current int64  `xml:"current_value"`
+}
+
+// AuthResponse represents the structure of the response from authorize calls.
+type AuthResponse struct {
+	Status     xml.Name      `xml:"status"`
+	Authorized bool          `xml:"authorized"`
+	Plan       string        `xml:"plan"`
+	Usages     []UsageReport `xml:"usage_reports>usage_report"`
 }
 
 // CreateService helper creates a service in the threescale.
