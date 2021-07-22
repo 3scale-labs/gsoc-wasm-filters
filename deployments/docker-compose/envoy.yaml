@@ -16,13 +16,8 @@ bootstrap_extensions:
         "@type": type.googleapis.com/google.protobuf.StringValue
         value: |
           {
-            "upstream_config": {
-              "name": "outbound|443||su1.3scale.net",
-              "url": "http://0.0.0.0:3000/",
-              "timeout": 20
-            },
             "delta_store_config": {
-              "capacity": 600,
+              "capacity": 100,
               "periodical_flush": "60s",
               "retry_duration": "30s",
               "await_queue_capacity": 200,
@@ -334,5 +329,5 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: apisonator
+                address: listener
                 port_value: 3000

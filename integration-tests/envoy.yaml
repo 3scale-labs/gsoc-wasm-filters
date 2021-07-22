@@ -16,19 +16,13 @@ bootstrap_extensions:
         "@type": type.googleapis.com/google.protobuf.StringValue
         value: |
           {
-            "upstream_config": {
-              "name": "outbound|443||su1.3scale.net",
-              "url": "https://su1.3scale.net",
-              "timeout": 20
-            },
             "delta_store_config": {
-              "capacity": 3,
+              "capacity": 100,
               "periodical_flush": "60s",
               "retry_duration": "30s",
               "await_queue_capacity": 200,
               "flush_mode": "Default"
             }
-
           }
       vm_config:
         runtime: "envoy.wasm.runtime.v8"
@@ -106,8 +100,8 @@ static_resources:
                       },
                       "services": [
                         {
-                          "id": "test_service_id",
-                          "token": "test_service_token",
+                          "id": "test-service-id",
+                          "token": "test-service-token",
                           "authorities": [
                             "*"
                           ],
@@ -335,5 +329,5 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: apisonator
+                address: listener
                 port_value: 3000
