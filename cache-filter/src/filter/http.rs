@@ -95,12 +95,9 @@ impl HttpContext for CacheFilter {
 
                 // Send back local response for not providing relevant request data
                 if cfg!(feature = "visible_logs") {
-                    #[cfg(feature = "visible_logs")]
-                    {
-                        let (key, val) =
-                            crate::log::visible_logs::get_logs_header_pair(self.context_id);
-                        self.send_http_response(401, vec![(key.as_ref(), val.as_ref())], None);
-                    }
+                    let (key, val) =
+                        crate::log::visible_logs::get_logs_header_pair(self.context_id);
+                    self.send_http_response(401, vec![(key.as_ref(), val.as_ref())], None);
                 } else {
                     self.send_http_response(401, vec![], None);
                 }
@@ -401,16 +398,13 @@ impl Context for CacheFilter {
                                 request_process_failure(self, self)
                             }
                         } else if cfg!(feature = "visible_logs") {
-                            #[cfg(feature = "visible_logs")]
-                            {
-                                let (key, val) =
-                                    crate::log::visible_logs::get_logs_header_pair(self.context_id);
-                                self.send_http_response(
-                                    403,
-                                    vec![(key.as_ref(), val.as_ref())],
-                                    Some(response.reason().unwrap().as_bytes()),
-                                );
-                            }
+                            let (key, val) =
+                                crate::log::visible_logs::get_logs_header_pair(self.context_id);
+                            self.send_http_response(
+                                403,
+                                vec![(key.as_ref(), val.as_ref())],
+                                Some(response.reason().unwrap().as_bytes()),
+                            );
                         } else {
                             self.send_http_response(
                                 403,

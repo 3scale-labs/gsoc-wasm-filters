@@ -17,15 +17,12 @@ use threescalers::{
 pub fn in_request_failure<C: HttpContext>(ctx: &C, filter: &CacheFilter) -> Action {
     if filter.config.failure_mode_deny {
         if cfg!(feature = "visible_logs") {
-            #[cfg(feature = "visible_logs")]
-            {
-                let (key, val) = crate::log::visible_logs::get_logs_header_pair(filter.context_id);
-                ctx.send_http_response(
-                    403,
-                    vec![(key.as_ref(), val.as_ref())],
-                    Some(b"Access forbidden.\n"),
-                );
-            }
+            let (key, val) = crate::log::visible_logs::get_logs_header_pair(filter.context_id);
+            ctx.send_http_response(
+                403,
+                vec![(key.as_ref(), val.as_ref())],
+                Some(b"Access forbidden.\n"),
+            );
         } else {
             ctx.send_http_response(403, vec![], Some(b"Access forbidden.\n"));
         }
@@ -38,15 +35,12 @@ pub fn in_request_failure<C: HttpContext>(ctx: &C, filter: &CacheFilter) -> Acti
 pub fn request_process_failure<C: HttpContext>(ctx: &C, filter: &CacheFilter) {
     if filter.config.failure_mode_deny {
         if cfg!(feature = "visible_logs") {
-            #[cfg(feature = "visible_logs")]
-            {
-                let (key, val) = crate::log::visible_logs::get_logs_header_pair(filter.context_id);
-                ctx.send_http_response(
-                    403,
-                    vec![(key.as_ref(), val.as_ref())],
-                    Some(b"Access forbidden.\n"),
-                );
-            }
+            let (key, val) = crate::log::visible_logs::get_logs_header_pair(filter.context_id);
+            ctx.send_http_response(
+                403,
+                vec![(key.as_ref(), val.as_ref())],
+                Some(b"Access forbidden.\n"),
+            );
         } else {
             ctx.send_http_response(403, vec![], Some(b"Access forbidden.\n"));
         }
