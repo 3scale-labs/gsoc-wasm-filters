@@ -28,9 +28,9 @@ services:
     networks: 
       - envoymesh
 
-  apisonator:
+  listener:
     image: quay.io/3scale/apisonator
-    container_name: apisonator
+    container_name: listener
     environment: 
       - CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0
       - CONFIG_REDIS_PROXY=redis://redis:6379/1
@@ -41,6 +41,19 @@ services:
     links: 
       - "my-redis:redis"
     command: 3scale_backend start
+    networks: 
+      - envoymesh
+  
+  worker:
+    image: quay.io/3scale/apisonator
+    container_name: worker
+    environment: 
+      - CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0
+      - CONFIG_REDIS_PROXY=redis://redis:6379/1
+      - RACK_ENV=production
+    links: 
+      - "my-redis:redis"
+    command: 3scale_backend_worker run
     networks: 
       - envoymesh 
 
