@@ -2,13 +2,12 @@ use anyhow::anyhow;
 use core::convert::TryFrom;
 use core::iter::Extend;
 use core::time::Duration;
+use serde::{Deserialize, Serialize};
 use url::Url;
-
-mod serde;
 
 const DEFAULT_TIMEOUT_MS: u64 = 1000_u64;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Upstream {
     pub name: String,
     pub url: Url,

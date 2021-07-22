@@ -6,7 +6,7 @@ use crate::service::{
     report::*,
 };
 use anyhow::*;
-use log::{debug, info, warn};
+use log::{debug, info};
 use proxy_wasm::{
     hostcalls::{dequeue_shared_queue, register_shared_queue},
     traits::{Context, RootContext},
@@ -126,7 +126,7 @@ impl RootContext for SingletonService {
                 true
             }
             Err(e) => {
-                warn!(
+                info!(
                     "Failed to parse envoy.yaml configuration: {:?}. Using default configuration.",
                     e
                 );
@@ -218,7 +218,10 @@ impl Context for SingletonService {
                 Some(bytes) => {
                     info!("Auth response");
                     // TODO : Handle auth processing.
-                    self.handle_auth_response(bytes, &status).unwrap();
+                    #[allow(unused_must_use)]
+                    {
+                        self.handle_auth_response(bytes, &status);
+                    }
                 }
                 None => {
                     if self.report_requests.contains_key(&token_id) {
