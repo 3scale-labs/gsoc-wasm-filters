@@ -8,6 +8,17 @@ import (
 	"net/http"
 )
 
+// BackendState represents the Apisonator internal state
+type BackendState struct {
+	name   string
+	params []interface{}
+}
+
+// Backend represents the Apisonator
+type Backend struct {
+	states []BackendState
+}
+
 // These credentials should match those mentioned in the ci.yaml.
 const (
 	InternalUser   = "root"
@@ -98,6 +109,7 @@ func CreateService(serviceID string, serviceToken string) error {
 	if res.StatusCode != 201 {
 		return fmt.Errorf("Failed to create a service id (%s) and token pair (%s)", serviceID, serviceToken)
 	}
+
 	return nil
 }
 
@@ -149,6 +161,7 @@ func AddApplication(serviceID string, appID string, planID string) error {
 	if res.StatusCode != 201 {
 		return fmt.Errorf("Failed to create an application(id: %s)", appID)
 	}
+
 	return nil
 }
 
@@ -181,6 +194,7 @@ func AddApplicationKey(serviceID string, appID string, key string) error {
 	if res.StatusCode != 201 {
 		return fmt.Errorf("Failed to add an application key(app_id: %s; key: %s)", appID, key)
 	}
+
 	return nil
 }
 
@@ -207,6 +221,7 @@ func AddUserKey(serviceID string, appID string, key string) error {
 	if res.StatusCode != 200 {
 		return fmt.Errorf("Failed to add a user key(app_id: %s)", appID)
 	}
+
 	return nil
 }
 
@@ -243,6 +258,7 @@ func AddMetrics(serviceID string, metrics *[]Metric) error {
 			return fmt.Errorf("Failed to add a metric to the service(id: %s)", serviceID)
 		}
 	}
+
 	return nil
 }
 
@@ -261,8 +277,7 @@ func DeleteMetrics(serviceID string, metrics *[]Metric) error {
 	return nil
 }
 
-// UpdateUsageLimit updates usage limit.
-func UpdateUsageLimit(serviceID string, planID string, metricID string, limit UsageLimit) error {
+func updateUsageLimit(serviceID string, planID string, metricID string, limit UsageLimit) error {
 	headerData := []byte(fmt.Sprintf(`
 		{ 
 			"usagelimit": {
@@ -284,11 +299,12 @@ func UpdateUsageLimit(serviceID string, planID string, metricID string, limit Us
 func UpdateUsageLimits(serviceID string, planID string, metrics *[]Metric) error {
 	for _, metric := range *metrics {
 		for _, limit := range metric.limits {
-			if err := UpdateUsageLimit(serviceID, planID, metric.id, limit); err != nil {
+			if err := updateUsageLimit(serviceID, planID, metric.id, limit); err != nil {
 				return err
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -335,4 +351,66 @@ func executeHTTPRequest(method string, url string, data *[]byte) (*http.Response
 	}
 	defer res.Body.Close()
 	return res, nil
+}
+
+// Push adds a new state
+func (backend *Backend) Push(stateName string, params []interface{}) error {
+	defer func() {
+		backend.states = append(backend.states, BackendState{stateName, params})
+	}()
+
+	switch stateName {
+	case "service":
+		return CreateService(params[0].(string), params[1].(string))
+	case "app":
+		return AddApplication(params[0].(string), params[1].(string), params[2].(string))
+	case "app_key":
+		return AddApplicationKey(params[0].(string), params[1].(string), params[2].(string))
+	case "user_key":
+		return AddUserKey(params[0].(string), params[1].(string), params[2].(string))
+	case "metrics":
+		return AddMetrics(params[0].(string), params[1].(*[]Metric))
+	case "usage_limits":
+		return UpdateUsageLimits(params[0].(string), params[1].(string), params[2].(*[]Metric))
+	}
+
+	return nil
+}
+
+// Pop removes the last state added
+func (backend *Backend) Pop() error {
+	if len(backend.states) > 0 {
+		state := backend.states[len(backend.states)-1]
+		params := state.params
+
+		defer func() {
+			backend.states = backend.states[:len(backend.states)-1]
+		}()
+
+		switch state.name {
+		case "service":
+			return DeleteService(params[0].(string), params[1].(string))
+		case "app":
+			return DeleteApplication(params[0].(string), params[1].(string))
+		case "app_key":
+			return DeleteApplicationKey(params[0].(string), params[1].(string), params[2].(string))
+		case "user_key":
+			return DeleteUserKey(params[0].(string), params[1].(string), params[2].(string))
+		case "metrics":
+			return DeleteMetrics(params[0].(string), params[1].(*[]Metric))
+		case "usage_limits":
+			return DeleteUsageLimits(params[0].(string), params[1].(string), params[2].(*[]Metric))
+		}
+	}
+	return nil
+}
+
+// Flush clears the backend state
+func (backend *Backend) Flush() error {
+	for len(backend.states) > 0 {
+		if err := backend.Pop(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
