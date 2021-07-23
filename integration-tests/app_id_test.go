@@ -133,12 +133,12 @@ func (suite *AppCredentialTestSuite) TestUserKeyForbidden() {
 
 func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
 	// Add a new unlimited app
-	if err := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited_app_id", suite.PlanID}); err != nil {
-		require.Nilf(suite.T(), err, "Error adding an application: %v", err)
-	}
-	if err := suite.backend.Push("user_key", []interface{}{suite.ServiceID, "unlimited_app_id", suite.UserKey}); err != nil {
-		require.Nilf(suite.T(), err, "Error adding a user key: %v", err)
-	}
+	appErr := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited-app-id", suite.PlanID})
+	require.Nilf(suite.T(), appErr, "Error adding an application: %v", appErr)
+
+	userKeyErr := suite.backend.Push("user_key", []interface{}{suite.ServiceID, "unlimited-app-id", suite.UserKey})
+	require.Nilf(suite.T(), userKeyErr, "Error adding a user key: %v", userKeyErr)
+
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
@@ -150,19 +150,17 @@ func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
 	fmt.Printf("Response: %v", res)
 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for user_key unlimited test: %v", res.StatusCode)
 
-	if err := suite.backend.Pop(); err != nil {
-		require.Nilf(suite.T(), err, "Failed to delete Application's user key: %v", err)
-	}
-	if err := suite.backend.Pop(); err != nil {
-		require.Nilf(suite.T(), err, "Failed to delete applications: %v", err)
-	}
+	deleteUserKeyErr := suite.backend.Pop()
+	require.Nilf(suite.T(), deleteUserKeyErr, "Failed to delete Application's user key: %v", deleteUserKeyErr)
+
+	deleteAppErr := suite.backend.Pop()
+	require.Nilf(suite.T(), deleteAppErr, "Failed to delete applications: %v", deleteAppErr)
 }
 
 func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
 	// Add a new unlimited app
-	if err := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited_app_id", suite.PlanID}); err != nil {
-		require.Nilf(suite.T(), err, "Error adding an application: %v", err)
-	}
+	appErr := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited-app-id", suite.PlanID})
+	require.Nilf(suite.T(), appErr, "Error adding an application: %v", appErr)
 
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
@@ -176,7 +174,7 @@ func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
 	fmt.Printf("Response: %v", res)
 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for appId unlimited test: %d", res.StatusCode)
 
-	if err := suite.backend.Pop(); err != nil {
-		require.Nilf(suite.T(), err, "Failed to delete applications: %v", err)
-	}
+	deleteAppErr := suite.backend.Pop()
+	require.Nilf(suite.T(), deleteAppErr, "Failed to delete applications: %v", deleteAppErr)
+
 }
