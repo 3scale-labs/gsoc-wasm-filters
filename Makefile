@@ -51,7 +51,8 @@ clean-auth:
 
 clean-apisonator:
 	docker rm my-redis -f
-	docker rm apisonator -f
+	docker rm listener -f
+	docker rm worker -f
 
 auth: ## Build threescale_wasm_auth filter. 
 	@echo "> Building threescale_wasm_auth filter"

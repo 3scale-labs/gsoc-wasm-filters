@@ -26,12 +26,12 @@ func (suite *AppCredentialTestSuite) SetupSuite() {
 	err := StartProxy("./", "./envoy.yaml")
 	require.Nilf(suite.T(), err, "Error starting proxy: %v", err)
 	// Initializing 3scale backend state
-	suite.AppID = "test_app_id"
-	suite.AppKey = "test_app_key"
-	suite.UserKey = "test_user_key"
-	suite.ServiceID = "test_service_id"
-	suite.PlanID = "test_plan_id"
-	suite.ServiceToken = "test_service_token"
+	suite.AppID = "test-app-id"
+	suite.AppKey = "test-app-key"
+	suite.UserKey = "test-user-key"
+	suite.ServiceID = "test-service-id"
+	suite.PlanID = "test-plan-id"
+	suite.ServiceToken = "test-service-token"
 	suite.metrics = []Metric{
 		{"hits", "1", []UsageLimit{
 			{Day, 10000},
@@ -96,7 +96,7 @@ func (suite *AppCredentialTestSuite) TestAppIdForbidden() {
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
 		"Host":      []string{"localhost"},
-		"x-app-id":  []string{"wrong_app_id"},
+		"x-app-id":  []string{"wrong-app-id"},
 		"x-app-key": []string{suite.AppKey},
 	}
 	res, errHTTP := client.Do(req)
@@ -123,7 +123,7 @@ func (suite *AppCredentialTestSuite) TestUserKeyForbidden() {
 	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	q := req.URL.Query()
-	q.Add("api_key", "wrong_user_key")
+	q.Add("api_key", "wrong-user-key")
 	req.URL.RawQuery = q.Encode()
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
@@ -133,12 +133,12 @@ func (suite *AppCredentialTestSuite) TestUserKeyForbidden() {
 
 func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
 	// Add a new unlimited app
-	if err := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited_app_id", suite.PlanID}); err != nil {
-		require.Nilf(suite.T(), err, "Error adding an application: %v", err)
-	}
-	if err := suite.backend.Push("user_key", []interface{}{suite.ServiceID, "unlimited_app_id", suite.UserKey}); err != nil {
-		require.Nilf(suite.T(), err, "Error adding a user key: %v", err)
-	}
+	appErr := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited-app-id", suite.PlanID})
+	require.Nilf(suite.T(), appErr, "Error adding an application: %v", appErr)
+
+	userKeyErr := suite.backend.Push("user_key", []interface{}{suite.ServiceID, "unlimited-app-id", suite.UserKey})
+	require.Nilf(suite.T(), userKeyErr, "Error adding a user key: %v", userKeyErr)
+
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
@@ -150,33 +150,31 @@ func (suite *AppCredentialTestSuite) TestUnlimitedUserKey() {
 	fmt.Printf("Response: %v", res)
 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for user_key unlimited test: %v", res.StatusCode)
 
-	if err := suite.backend.Pop(); err != nil {
-		require.Nilf(suite.T(), err, "Failed to delete Application's user key: %v", err)
-	}
-	if err := suite.backend.Pop(); err != nil {
-		require.Nilf(suite.T(), err, "Failed to delete applications: %v", err)
-	}
+	deleteUserKeyErr := suite.backend.Pop()
+	require.Nilf(suite.T(), deleteUserKeyErr, "Failed to delete Application's user key: %v", deleteUserKeyErr)
+
+	deleteAppErr := suite.backend.Pop()
+	require.Nilf(suite.T(), deleteAppErr, "Failed to delete applications: %v", deleteAppErr)
 }
 
 func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
 	// Add a new unlimited app
-	if err := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited_app_id", suite.PlanID}); err != nil {
-		require.Nilf(suite.T(), err, "Error adding an application: %v", err)
-	}
+	appErr := suite.backend.Push("app", []interface{}{suite.ServiceID, "unlimited-app-id", suite.PlanID})
+	require.Nilf(suite.T(), appErr, "Error adding an application: %v", appErr)
 
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
 		"Host":     []string{"localhost"},
-		"x-app-id": []string{"unlimited_app_id"},
+		"x-app-id": []string{"unlimited-app-id"},
 	}
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
 	fmt.Printf("Response: %v", res)
 	assert.Equal(suite.T(), 200, res.StatusCode, "Invalid http response code for appId unlimited test: %d", res.StatusCode)
 
-	if err := suite.backend.Pop(); err != nil {
-		require.Nilf(suite.T(), err, "Failed to delete applications: %v", err)
-	}
+	deleteAppErr := suite.backend.Pop()
+	require.Nilf(suite.T(), deleteAppErr, "Failed to delete applications: %v", deleteAppErr)
+
 }
