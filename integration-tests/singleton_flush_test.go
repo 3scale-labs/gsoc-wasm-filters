@@ -4,7 +4,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"gopkg.in/yaml.v2"
 )
 
 type SingletonFlushTestSuite struct {
@@ -84,60 +82,8 @@ func (suite *SingletonFlushTestSuite) BeforeTest(suiteName, testName string) {
 }
 
 func configureSingletonFlush(flushMode string) error {
-	yamlFile, fileErr := ioutil.ReadFile("envoy.yaml")
-	if fileErr != nil {
-		return fileErr
-	}
-	yamlData := make(map[interface{}]interface{})
-	yamlErr := yaml.Unmarshal(yamlFile, &yamlData)
-	if yamlErr != nil {
-		return yamlErr
-	}
-	var singletonConfig = fmt.Sprintf(`
-      name: envoy.bootstrap.wasm
-      typed_config:
-        '@type': type.googleapis.com/envoy.extensions.wasm.v3.WasmService
-        singleton: true
-        config:
-          name: "singleton_service"
-          root_id: "singleton_service"
-          configuration: 
-            "@type": type.googleapis.com/google.protobuf.StringValue
-            value: |
-              {
-                "delta_store_config": {
-                  "capacity": 100,
-                  "periodical_flush": "60s",
-                  "retry_duration": "30s",
-                  "await_queue_capacity": 200,
-                  "flush_mode": "%s"
-                }
-              }
-          vm_config:
-            runtime: "envoy.wasm.runtime.v8"
-            vm_id: "my_vm_id"
-            code:
-              local:
-                filename: "/usr/local/bin/singleton_service.wasm"
-            configuration: {}
-            allow_precompiled: true
-`, flushMode)
-	singletonConfigDataholder := make(map[interface{}]interface{})
-	newConfigErr := yaml.Unmarshal([]byte(singletonConfig), &singletonConfigDataholder)
-	if newConfigErr != nil {
-		return newConfigErr
-	}
-	yamlData["bootstrap_extensions"] = []interface{}{singletonConfigDataholder}
-	yamlModified, yamlMarshalErr := yaml.Marshal(&yamlData)
-	if yamlMarshalErr != nil {
-		return yamlMarshalErr
-	}
-	writeErr := ioutil.WriteFile("temp.yaml", yamlModified, 0777)
-	if writeErr != nil {
-		return writeErr
-	}
-	return nil
-
+	configData := []byte(fmt.Sprintf(`{ "SingletonFlushMode": "%s" }`, flushMode))
+	return GenerateConfig("temp.yaml", configData)
 }
 
 func (suite *SingletonFlushTestSuite) TestSingletonContainerFlush() {
