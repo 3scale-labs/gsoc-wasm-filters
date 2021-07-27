@@ -55,7 +55,7 @@ func (suite *AppCredentialTestSuite) SetupSuite() {
 	metricsErr := suite.backend.Push("metrics", []interface{}{suite.ServiceID, &suite.metrics})
 	require.Nilf(suite.T(), metricsErr, "Error: %v", metricsErr)
 
-	usageErr := suite.backend.Push("usages", []interface{}{suite.ServiceID, suite.PlanID, &suite.metrics})
+	usageErr := suite.backend.Push("usage_limits", []interface{}{suite.ServiceID, suite.PlanID, &suite.metrics})
 	require.Nilf(suite.T(), usageErr, "Error: %v", usageErr)
 
 }
