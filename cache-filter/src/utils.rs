@@ -1,5 +1,5 @@
 use crate::filter::http::CacheFilter;
-use log::info;
+use crate::info;
 use proxy_wasm::{traits::HttpContext, types::Action};
 use threescale::structs::{AppIdentifier, ThreescaleData};
 use threescalers::{
@@ -85,10 +85,7 @@ pub fn do_auth_call<C: HttpContext>(
     {
         Ok(result) => result,
         Err(e) => {
-            info!(
-                "ctxt {}: Couldn't contact 3scale due to {}",
-                filter.context_id, e
-            );
+            info!(filter.context_id, "couldn't contact 3scale: {}", e);
             return in_request_failure(ctx, filter);
         }
     };
@@ -101,7 +98,7 @@ pub fn do_auth_call<C: HttpContext>(
         .map(|(key, value)| (key.as_str(), value.as_str()))
         .collect::<Vec<_>>();
 
-    info!("App : {:?}", apicall);
+    info!(filter.context_id, "App : {:?}", apicall);
     match request_data.upstream.call(
         ctx,
         uri.as_ref(),
@@ -112,14 +109,12 @@ pub fn do_auth_call<C: HttpContext>(
         None,
     ) {
         Ok(token) => info!(
-            "ctxt {}: Dispatched successful: token: {}",
-            filter.context_id, token
+            filter.context_id,
+            "dispatch successful with token: {}",
+            token
         ),
         Err(e) => {
-            info!(
-                "ctxt {}: Couldn't contact 3scale due to {:?}",
-                filter.context_id, e
-            );
+            info!(filter.context_id, "couldn't contact 3scale: {:?}", e);
             return in_request_failure(ctx, filter);
         }
     };
