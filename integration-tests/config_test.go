@@ -21,10 +21,6 @@ type ConfigTestSuite struct {
 
 func (suite *ConfigTestSuite) SetupSuite() {
 	suite.vars = make(map[string]string)
-	suite.vars["service_id"] = "test-service-id"
-	suite.vars["service_token"] = "test-service-token"
-	suite.vars["app_id"] = "test-app-id"
-	suite.vars["plan_id"] = "test-plan-id"
 }
 
 func (suite *ConfigTestSuite) TestServiceNotFound() {
@@ -88,7 +84,7 @@ func (suite *ConfigTestSuite) TestWrongUpstreamURL() {
 
 func (suite *ConfigTestSuite) TestWrongClusterName() {
 	configVars := []byte(`{ 
-		"ClusterName": "cluster-that-is-not-present",
+		"ClusterName": "cluster-that-is-not-present"
 	}`)
 	configErr := GenerateConfig("temp.yaml", configVars)
 	require.Nilf(suite.T(), configErr, "Error generating config file: %v", configErr)

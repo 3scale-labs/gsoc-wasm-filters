@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"text/template"
+	"time"
 )
 
 func main() {
@@ -34,7 +35,6 @@ func GenerateConfig(name string, configVars []byte) error {
 	if writeErr := ioutil.WriteFile(name, out.Bytes(), 0777); writeErr != nil {
 		fmt.Printf("Error writing temp config file: %v", writeErr)
 	}
-	time.Sleep(100 * time.Millisecond)
 	return nil
 }
 
@@ -59,6 +59,8 @@ func StopProxy() error {
 		fmt.Printf("Error removing proxy container: %v", err)
 		return err
 	}
+
+	time.Sleep(5 * time.Second)
 	return nil
 }
 
@@ -71,10 +73,8 @@ func SerialSearch(logs, patterns []string) bool {
 		if patternsMatched == len(patterns) {
 			return true
 		}
-		fmt.Printf("trying to match: %s with %s", log, patterns[patternsMatched])
 		matched, _ := regexp.MatchString(patterns[patternsMatched], log)
 		if matched {
-			fmt.Printf("%s matched under pattern %s", log, patterns[patternsMatched])
 			patternsMatched++
 		}
 	}

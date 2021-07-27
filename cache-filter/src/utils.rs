@@ -110,8 +110,7 @@ pub fn do_auth_call<C: HttpContext>(
     ) {
         Ok(token) => info!(
             filter.context_id,
-            "dispatch successful with token: {}",
-            token
+            "dispatch successful with token: {}", token
         ),
         Err(e) => {
             info!(filter.context_id, "couldn't contact 3scale: {:?}", e);
