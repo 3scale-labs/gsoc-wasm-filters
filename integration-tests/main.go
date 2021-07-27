@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"regexp"
 	"text/template"
 )
 
@@ -15,7 +16,7 @@ func main() {
 }
 
 // GenerateConfig uses a config template to generate a config file for the proxy.
-func GenerateConfig(name string, jsonData []byte) error {
+func GenerateConfig(name string, configVars []byte) error {
 	tmpl, err := template.ParseFiles("./config_template.yaml")
 	if err != nil {
 		fmt.Printf("Failed to parse config template: %v", err)
@@ -23,7 +24,7 @@ func GenerateConfig(name string, jsonData []byte) error {
 
 	out := new(bytes.Buffer)
 	dataHolder := map[string]interface{}{}
-	if err := json.Unmarshal([]byte(jsonData), &dataHolder); err != nil {
+	if err := json.Unmarshal([]byte(configVars), &dataHolder); err != nil {
 		fmt.Printf("Error parsing the json data provided: %v", err)
 	}
 	if err := tmpl.Execute(out, dataHolder); err != nil {
@@ -33,6 +34,7 @@ func GenerateConfig(name string, jsonData []byte) error {
 	if writeErr := ioutil.WriteFile(name, out.Bytes(), 0777); writeErr != nil {
 		fmt.Printf("Error writing temp config file: %v", writeErr)
 	}
+	time.Sleep(100 * time.Millisecond)
 	return nil
 }
 
@@ -58,4 +60,24 @@ func StopProxy() error {
 		return err
 	}
 	return nil
+}
+
+// SerialSearch moves onto the next pattern only if previous pattern matches the log.
+// It returns true only when all the patterns match in-order.
+func SerialSearch(logs, patterns []string) bool {
+	patternsMatched := 0
+
+	for _, log := range logs {
+		if patternsMatched == len(patterns) {
+			return true
+		}
+		fmt.Printf("trying to match: %s with %s", log, patterns[patternsMatched])
+		matched, _ := regexp.MatchString(patterns[patternsMatched], log)
+		if matched {
+			fmt.Printf("%s matched under pattern %s", log, patterns[patternsMatched])
+			patternsMatched++
+		}
+	}
+
+	return patternsMatched == len(patterns)
 }
