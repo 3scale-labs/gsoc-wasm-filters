@@ -18,10 +18,10 @@ bootstrap_extensions:
           {
             "delta_store_config": {
               "capacity": {{or .SingletonCapacity "100"}},
-              "periodical_flush": '{{or .SingletonPeriodicFlush "60"}}s',
-              "retry_duration": '{{or .SingletonRetryDuration "30"}}s',
+              "periodical_flush": "{{or .SingletonPeriodicFlush "60"}}s",
+              "retry_duration": "{{or .SingletonRetryDuration "30"}}s",
               "await_queue_capacity": {{or .SingletonQueueCapacity "200"}},
-              "flush_mode": '{{or .SingletonFlushMode "Default"}}'
+              "flush_mode": "{{or .SingletonFlushMode "Default"}}"
             }
           }
       vm_config:
@@ -100,8 +100,8 @@ static_resources:
                       },
                       "services": [
                         {
-                          "id": {{or .ServiceID "\"test-service-id\""}},
-                          "token": {{or .ServiceToken "\"test-service-token\""}},
+                          "id": "{{or .ServiceID "\"test-service-id\""}}",
+                          "token": "{{or .ServiceToken "\"test-service-token\""}}",
                           "authorities": [
                             "*"
                           ],
