@@ -374,25 +374,25 @@ func executeHTTPRequest(method string, url string, data *[]byte) (*http.Response
 
 // Push adds a new state
 func (backend *Backend) Push(stateName string, params []interface{}) error {
-	defer func() {
-		backend.states = append(backend.states, BackendState{stateName, params})
-	}()
-
+	var err error
 	switch stateName {
 	case "service":
-		return CreateService(params[0].(string), params[1].(string))
+		err = CreateService(params[0].(string), params[1].(string))
 	case "app":
-		return AddApplication(params[0].(string), params[1].(string), params[2].(string))
+		err = AddApplication(params[0].(string), params[1].(string), params[2].(string))
 	case "app_key":
-		return AddApplicationKey(params[0].(string), params[1].(string), params[2].(string))
+		err = AddApplicationKey(params[0].(string), params[1].(string), params[2].(string))
 	case "user_key":
-		return AddUserKey(params[0].(string), params[1].(string), params[2].(string))
+		err = AddUserKey(params[0].(string), params[1].(string), params[2].(string))
 	case "metrics":
-		return AddMetrics(params[0].(string), params[1].(*[]Metric))
+		err = AddMetrics(params[0].(string), params[1].(*[]Metric))
 	case "usage_limits":
-		return UpdateUsageLimits(params[0].(string), params[1].(string), params[2].(*[]Metric))
+		err = UpdateUsageLimits(params[0].(string), params[1].(string), params[2].(*[]Metric))
 	}
-
+	if err != nil {
+		return err
+	}
+	backend.states = append(backend.states, BackendState{stateName, params})
 	return nil
 }
 
@@ -402,24 +402,26 @@ func (backend *Backend) Pop() error {
 		state := backend.states[len(backend.states)-1]
 		params := state.params
 
-		defer func() {
-			backend.states = backend.states[:len(backend.states)-1]
-		}()
-
+		var err error
 		switch state.name {
 		case "service":
-			return DeleteService(params[0].(string), params[1].(string))
+			err = DeleteService(params[0].(string), params[1].(string))
 		case "app":
-			return DeleteApplication(params[0].(string), params[1].(string))
+			err = DeleteApplication(params[0].(string), params[1].(string))
 		case "app_key":
-			return DeleteApplicationKey(params[0].(string), params[1].(string), params[2].(string))
+			err = DeleteApplicationKey(params[0].(string), params[1].(string), params[2].(string))
 		case "user_key":
-			return DeleteUserKey(params[0].(string), params[1].(string), params[2].(string))
+			err = DeleteUserKey(params[0].(string), params[1].(string), params[2].(string))
 		case "metrics":
-			return DeleteMetrics(params[0].(string), params[1].(*[]Metric))
+			err = DeleteMetrics(params[0].(string), params[1].(*[]Metric))
 		case "usage_limits":
-			return DeleteUsageLimits(params[0].(string), params[1].(string), params[2].(*[]Metric))
+			err = DeleteUsageLimits(params[0].(string), params[1].(string), params[2].(*[]Metric))
 		}
+		if err != nil {
+			return err
+		}
+		backend.states = backend.states[:len(backend.states)-1]
+		return nil
 	}
 	return nil
 }
