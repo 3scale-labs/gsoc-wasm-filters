@@ -101,6 +101,14 @@ func (suite *AppCredentialTestSuite) SetupSuite() {
 
 	err := StartProxy("./", "./temp.yaml")
 	require.Nilf(suite.T(), err, "Error starting proxy: %v", err)
+	require.Eventually(suite.T(), func() bool {
+		res, err := http.Get("http://localhost:9095/")
+		if err != nil {
+			return false
+		}
+		defer res.Body.Close()
+		return true
+	}, 15*time.Second, 1*time.Second, "Envoy has not started")
 
 }
 

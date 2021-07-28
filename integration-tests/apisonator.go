@@ -374,9 +374,6 @@ func executeHTTPRequest(method string, url string, data *[]byte) (*http.Response
 
 // Push adds a new state
 func (backend *Backend) Push(stateName string, params []interface{}) error {
-	// defer func() {
-	// 	backend.states = append(backend.states, BackendState{stateName, params})
-	// }()
 	var err error
 	switch stateName {
 	case "service":

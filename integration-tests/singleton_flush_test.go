@@ -40,30 +40,6 @@ func (suite *SingletonFlushTestSuite) SetupSuite() {
 
 }
 
-// Gets triggered before each test and runs the pre-conditions like setting up apisonator services
-// and generating envoy config from a template.
-func (suite *SingletonFlushTestSuite) BeforeTest(suiteName, testName string) {
-	if testName == "TestSingletonContainerFlush" {
-		suite.ServiceID = uuid.NewString()
-		suite.ServiceToken = uuid.NewString()
-
-		// Configure the envoy template with ContainerLimit flush.
-		configErr := configureSingletonFlush("ContainerLimit", "100", "60", suite.ServiceID, suite.ServiceToken)
-		require.Nilf(suite.T(), configErr, "Error configuring envoy.yaml for container flush : %v", configErr)
-		suite.initializeApisonatorState()
-
-	} else if testName == "TestSingletonPeriodicalFlush" {
-		suite.ServiceID = uuid.NewString()
-		suite.ServiceToken = uuid.NewString()
-
-		// Configure the envoy template with PeriodicalFlush. Flush period set as 10 seconds to check the apisonator values.
-		configErr := configureSingletonFlush("Periodical", "100", "10", suite.ServiceID, suite.ServiceToken)
-		require.Nilf(suite.T(), configErr, "Error configuring envoy.yaml for periodical flush: %v", configErr)
-		suite.initializeApisonatorState()
-	}
-
-}
-
 // Generates envoy config from the template.
 func configureSingletonFlush(flushMode string, deltaStore string, periodical string, serviceID string, serviceToken string) error {
 	configData := []byte(fmt.Sprintf(`{ "SingletonFlushMode": "%s" , 
@@ -118,25 +94,16 @@ func getApisonatorUsage(serviceID string, serviceToken string, appID string) (Us
 // Gets triggered after each test and runs the post-conditions like deleting apisonator services
 // and deleting the temporary config file.
 func (suite *SingletonFlushTestSuite) AfterTest(suiteName, testName string) {
-	if testName == "TestSingletonContainerFlush" {
-		fmt.Println("Cleaning 3scale backend state")
-		flushErr := suite.backend.Flush()
-		if flushErr != nil {
-			fmt.Printf("Error flushing the backend state: %v", flushErr)
-			suite.backend.states = suite.backend.states[:0]
-		}
-		deleteErr := os.Remove("./temp.yaml")
-		require.Nilf(suite.T(), deleteErr, "Error deleting temporary envoy.yaml")
-	} else if testName == "TestSingletonPeriodicalFlush" {
-		fmt.Println("Cleaning 3scale backend state")
-		flushErr := suite.backend.Flush()
-		if flushErr != nil {
-			fmt.Printf("Error flushing the backend state: %v", flushErr)
-			suite.backend.states = suite.backend.states[:0]
-		}
-		deleteErr := os.Remove("./temp.yaml")
-		require.Nilf(suite.T(), deleteErr, "Error deleting temporary envoy.yaml")
+	downErr := StopProxy()
+	require.Nilf(suite.T(), downErr, "Error stopping proxy: %v", downErr)
+	fmt.Println("Cleaning 3scale backend state")
+	flushErr := suite.backend.Flush()
+	if flushErr != nil {
+		fmt.Printf("Error flushing the backend state: %v", flushErr)
+		suite.backend.states = suite.backend.states[:0]
 	}
+	deleteErr := os.Remove("./temp.yaml")
+	require.Nilf(suite.T(), deleteErr, "Error deleting temporary envoy.yaml")
 }
 
 // This helper method initializes services, apps, metrics and usages in the apisonator for the tests.
@@ -184,8 +151,26 @@ func (suite *SingletonFlushTestSuite) initializeApisonatorState() {
 // flushing them based on the delta store container size. For this scenario, delta
 // store config is configured as 100.
 func (suite *SingletonFlushTestSuite) TestSingletonContainerFlush() {
+	// Pre-conditions before test
+	suite.ServiceID = uuid.NewString()
+	suite.ServiceToken = uuid.NewString()
+	// Configure the envoy template with ContainerLimit flush.
+	configErr := configureSingletonFlush("ContainerLimit", "100", "60", suite.ServiceID, suite.ServiceToken)
+	require.Nilf(suite.T(), configErr, "Error configuring envoy.yaml for container flush : %v", configErr)
+	// Create service, apps, metrics and usage limits in apisonator
+	suite.initializeApisonatorState()
+	// Start the proxy.
 	upErr := StartProxy("./", "./temp.yaml")
 	require.Nilf(suite.T(), upErr, "Error starting proxy: %v", upErr)
+	require.Eventually(suite.T(), func() bool {
+		res, err := http.Get("http://localhost:9095/")
+		if err != nil {
+			return false
+		}
+		defer res.Body.Close()
+		return true
+	}, 15*time.Second, 1*time.Second, "Envoy has not started")
+	// Test scenario begins here
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
@@ -209,16 +194,31 @@ func (suite *SingletonFlushTestSuite) TestSingletonContainerFlush() {
 		}
 		return false
 	}, 5*time.Second, 1*time.Second, "Invalid number for usages for the metric hits in apisonator")
-	downErr := StopProxy()
-	require.Nilf(suite.T(), downErr, "Error stopping proxy: %v", downErr)
 }
 
 // This scenario tests the PeriodicalFlush scenario by sending requests,
 // wait for some time and check the apisonator usage. For this test periodical
 // time limit is configured as 10s.
 func (suite *SingletonFlushTestSuite) TestSingletonPeriodicalFlush() {
+	// Pre-conditions before test
+	suite.ServiceID = uuid.NewString()
+	suite.ServiceToken = uuid.NewString()
+
+	// Configure the envoy template with PeriodicalFlush. Flush period set as 10 seconds to check the apisonator values.
+	configErr := configureSingletonFlush("Periodical", "100", "10", suite.ServiceID, suite.ServiceToken)
+	require.Nilf(suite.T(), configErr, "Error configuring envoy.yaml for periodical flush: %v", configErr)
+	suite.initializeApisonatorState()
+	// Create service, apps, metrics and usage limits in apisonator
 	upErr := StartProxy("./", "./temp.yaml")
 	require.Nilf(suite.T(), upErr, "Error starting proxy: %v", upErr)
+	require.Eventually(suite.T(), func() bool {
+		res, err := http.Get("http://localhost:9095/")
+		if err != nil {
+			return false
+		}
+		defer res.Body.Close()
+		return true
+	}, 15*time.Second, 1*time.Second, "Envoy has not started")
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
@@ -244,7 +244,4 @@ func (suite *SingletonFlushTestSuite) TestSingletonPeriodicalFlush() {
 		}
 		return false
 	}, 15*time.Second, 1*time.Second, "Invalid number for usages for the metric hits in apisonator")
-	if err := StopProxy(); err != nil {
-		fmt.Printf("Error stoping docker: %v", err)
-	}
 }

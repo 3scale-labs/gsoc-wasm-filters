@@ -100,8 +100,8 @@ static_resources:
                       },
                       "services": [
                         {
-                          "id": "{{or .ServiceID "\"test-service-id\""}}",
-                          "token": "{{or .ServiceToken "\"test-service-token\""}}",
+                          "id": "{{ .ServiceID }}",
+                          "token": "{{ .ServiceToken }}",
                           "authorities": [
                             "*"
                           ],

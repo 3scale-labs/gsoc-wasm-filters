@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"text/template"
-	"time"
 )
 
 func main() {
@@ -46,7 +45,6 @@ func StartProxy(dockerfile string, envoy string) error {
 		fmt.Printf("Error starting proxy container: %v", err)
 		return err
 	}
-	time.Sleep(15 * time.Second)
 	return nil
 }
 
