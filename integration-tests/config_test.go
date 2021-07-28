@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,14 @@ func (suite *ConfigTestSuite) TestServiceNotFound() {
 	upErr := StartProxy("./", "./envoy.yaml")
 	require.Nilf(suite.T(), upErr, "Error starting proxy: %v", upErr)
 
+	require.Eventually(suite.T(), func() bool {
+		res, err := http.Get("http://localhost:9095/")
+		if err != nil {
+			return false
+		}
+		defer res.Body.Close()
+		return true
+	}, 15*time.Second, 1*time.Second, "Envoy has not started")
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
@@ -59,6 +68,14 @@ func (suite *ConfigTestSuite) TestWrongUpstreamURL() {
 	upErr := StartProxy("./", "./temp.yaml")
 	require.Nilf(suite.T(), upErr, "Error starting proxy: %v", upErr)
 
+	require.Eventually(suite.T(), func() bool {
+		res, err := http.Get("http://localhost:9095/")
+		if err != nil {
+			return false
+		}
+		defer res.Body.Close()
+		return true
+	}, 15*time.Second, 1*time.Second, "Envoy has not started")
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
@@ -92,6 +109,14 @@ func (suite *ConfigTestSuite) TestWrongClusterName() {
 	upErr := StartProxy("./", "./temp.yaml")
 	require.Nilf(suite.T(), upErr, "Error starting proxy: %v", upErr)
 
+	require.Eventually(suite.T(), func() bool {
+		res, err := http.Get("http://localhost:9095/")
+		if err != nil {
+			return false
+		}
+		defer res.Body.Close()
+		return true
+	}, 15*time.Second, 1*time.Second, "Envoy has not started")
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
 	req.Header = http.Header{
