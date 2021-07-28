@@ -90,7 +90,7 @@ static_resources:
                       "backend": {
                         "name": "backend-name",
                         "upstream": {
-                          "name": "outbound|443||su1.3scale.net",
+                          "name": "{{or .ClusterName "outbound|443||su1.3scale.net"}}",
                           "url": {{or .UpstreamURL "\"http://0.0.0.0:3000\""}},
                           "timeout": {{or .UpstreamTimeout "5000"}}
                         },
@@ -289,11 +289,11 @@ static_resources:
     upstream_connection_options:
       tcp_keepalive: {}
     load_assignment:
-      cluster_name: outbound|443||su1.3scale.net
+      cluster_name: {{or .ClusterName "outbound|443||su1.3scale.net"}}
       endpoints:
       - lb_endpoints:
         - endpoint:
             address:
               socket_address:
-                address: listener
+                address: {{or .ClusterSocketAddress "listener"}}
                 port_value: 3000

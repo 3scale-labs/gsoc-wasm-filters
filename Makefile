@@ -15,9 +15,9 @@ cache: export BUILD?=debug
 cache:
 	@echo "Building cache_filter"
     ifeq ($(BUILD), release)
-		cargo build --package cache-filter --target=wasm32-unknown-unknown --release
+		cargo build --package cache-filter --target=wasm32-unknown-unknown --release $(CARGO_EXTRA_ARGS)
     else
-		cargo build --package cache-filter --target=wasm32-unknown-unknown
+		cargo build --package cache-filter --target=wasm32-unknown-unknown $(CARGO_EXTRA_ARGS) 
     endif
 	cp target/wasm32-unknown-unknown/$(BUILD)/cache_filter.wasm ./deployments/docker-compose/cache_filter.wasm
 
