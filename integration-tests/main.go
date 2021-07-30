@@ -66,14 +66,14 @@ func StopProxy() error {
 
 // StartMiddleware build and starts the middleware in a docker container.
 func StartMiddleware() error {
-	cmd := exec.Command("sh", "-c", "docker build middleware -f ./middleware/Dockerfile && docker run -d --network envoymesh --name middleware middleware")
+	cmd := exec.Command("sh", "-c", "docker build -t middleware -f ./middleware/Dockerfile ./middleware --no-cache && docker run -d --network envoymesh --name middleware middleware")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error starting middleware container: %v", err)
 		return err
 	}
-	time.Sleep(6*time.Second)
+	time.Sleep(6 * time.Second)
 	return nil
 }
 

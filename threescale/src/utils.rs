@@ -57,7 +57,7 @@ pub fn limit_check_and_update_application(
 
     // request is not rate-limited and will be set to cache
     let cache_key = CacheKey::from(&app.service_id, &app.app_id);
-    if !set_application_to_cache(&cache_key.as_string(), &app, app_cas) {
+    if !set_application_to_cache(&cache_key.as_string(), app, app_cas) {
         return Err(UpdateMetricsError::CacheUpdateFail);
     }
     Ok(())

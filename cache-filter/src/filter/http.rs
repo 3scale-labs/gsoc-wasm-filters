@@ -110,7 +110,7 @@ impl HttpContext for CacheFilter {
         self.req_data = request_data.clone();
 
         if let AppIdentifier::UserKey(ref user_key) = request_data.app_id {
-            match get_app_id_from_cache(&user_key) {
+            match get_app_id_from_cache(user_key) {
                 Ok(app_id) => {
                     request_data.app_id = AppIdentifier::from(app_id);
                     self.req_data.app_id = request_data.app_id.clone();

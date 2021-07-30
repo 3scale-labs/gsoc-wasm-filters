@@ -93,8 +93,8 @@ pub fn set_app_id_to_cache(user_key: &UserKey, app_id: &AppId) -> Result<(), Cac
 pub fn set_application_to_cache(key: &str, app: &Application, cas: u32) -> bool {
     info!("setting application with key: {}", key);
     match set_shared_data(
-        &key,
-        Some(&bincode::serialize::<Application>(&app).unwrap()),
+        key,
+        Some(&bincode::serialize::<Application>(app).unwrap()),
         Some(cas),
     ) {
         Ok(()) => true,

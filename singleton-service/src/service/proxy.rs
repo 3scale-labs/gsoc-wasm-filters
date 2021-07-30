@@ -220,13 +220,13 @@ impl Context for SingletonService {
                     // TODO : Handle auth processing.
                     #[allow(unused_must_use)]
                     {
-                        self.handle_auth_response(bytes, &status);
+                        self.handle_auth_response(bytes, status);
                     }
                 }
                 None => {
                     if self.report_requests.contains_key(&token_id) {
                         info!("Report response");
-                        self.handle_report_response(&status, &token_id);
+                        self.handle_report_response(status, &token_id);
                     }
                 }
             }
@@ -236,7 +236,7 @@ impl Context for SingletonService {
                 token_id
             );
             if self.report_requests.contains_key(&token_id) {
-                self.handle_report_response(&status, &token_id);
+                self.handle_report_response(status, &token_id);
             }
         }
     }
@@ -472,6 +472,6 @@ impl SingletonService {
     fn handle_report_response(&mut self, status: &str, token_id: &u32) {
         // TODO : Handle report failure.
         info!("Report status : {} {}", status, token_id);
-        self.report_requests.remove(&token_id);
+        self.report_requests.remove(token_id);
     }
 }
