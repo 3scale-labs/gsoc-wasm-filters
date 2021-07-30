@@ -44,7 +44,7 @@ func (suite *ConfigTestSuite) TestServiceNotFound() {
 	}
 
 	res, resErr := suite.client.Do(req)
-	require.Nilf(suite.T(), resErr, "Error creating the HTTP request: %v", resErr)
+	require.Nilf(suite.T(), resErr, "Error sending the HTTP request: %v", resErr)
 
 	var logs []string
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)
@@ -141,6 +141,6 @@ func (suite *ConfigTestSuite) TestWrongClusterName() {
 }
 
 func TestConfigSuite(t *testing.T) {
-	fmt.Println("Running TestConfigSuite")
+	fmt.Println("Running ==TestConfigSuite==")
 	suite.Run(t, new(ConfigTestSuite))
 }
