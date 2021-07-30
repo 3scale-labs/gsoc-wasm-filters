@@ -119,7 +119,7 @@ impl HttpContext for CacheFilter {
                 Err(e) => {
                     debug!(
                         self.context_id,
-                        "failed to get app_id for user_key from cache: {:?}", e
+                        "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
                     // TODO: avoid multiple calls for identical requests
                     return do_auth_call(self, self, &request_data);
@@ -147,6 +147,13 @@ impl HttpContext for CacheFilter {
                 do_auth_call(self, self, &request_data)
             }
         }
+    }
+
+    #[cfg(feature = "visible_logs")]
+    fn on_http_response_headers(&mut self, _: usize) -> Action {
+        let (key, val) = crate::log::visible_logs::get_logs_header_pair(self.context_id);
+        self.add_http_response_header(key.as_ref(), val.as_ref());
+        Action::Continue
     }
 }
 
@@ -371,14 +378,6 @@ impl CacheFilter {
             metrics: RefCell::new(usages),
             upstream: upstream_builder.build(&cluster_name, timeout),
         })
-    }
-
-    #[cfg(feature = "visible_logs")]
-    #[allow(dead_code)]
-    fn on_http_response_header(&mut self, _: usize) -> Action {
-        let (key, val) = crate::log::visible_logs::get_logs_header_pair(self.context_id);
-        self.add_http_response_header(key.as_ref(), val.as_ref());
-        Action::Continue
     }
 }
 
