@@ -58,4 +58,5 @@ services:
       - envoymesh 
 
 networks:
-  envoymesh: {}
+  envoymesh:
+    name: envoymesh
