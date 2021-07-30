@@ -296,4 +296,4 @@ static_resources:
             address:
               socket_address:
                 address: {{or .ClusterSocketAddress "listener"}}
-                port_value: 3000
+                port_value: {{or .ClusterSocketPort "3000"}}
