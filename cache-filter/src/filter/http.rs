@@ -211,12 +211,13 @@ impl CacheFilter {
                     rate_limited = true;
                     break;
                 }
-                Err(UpdateMetricsError::CacheUpdateFail) => {
+                Err(UpdateMetricsError::CacheUpdateFail(reason)) => {
                     info!(
                         self.context_id,
-                        "try ({} out of {}): failed to set application to cache",
+                        "try ({} out of {}): failed to set application to cache: {}",
                         (num_try as u64) + 1,
-                        max_tries
+                        max_tries,
+                        reason
                     );
                     if num_try < max_tries {
                         match get_application_from_cache(&self.cache_key) {

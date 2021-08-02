@@ -7,13 +7,18 @@ pub struct FilterConfig {
     pub failure_mode_deny: bool,
     /// Number of retries for setting data to cache
     pub max_tries: u32,
+    /// Max memory in bytes that shared data is allowed to use.
+    pub max_shared_memory_bytes: u64,
 }
+
+const DEFAULT_MAX_SHARED_MEMORY: u64 = 4294967296;
 
 impl Default for FilterConfig {
     fn default() -> Self {
         FilterConfig {
             failure_mode_deny: true,
             max_tries: 5,
+            max_shared_memory_bytes: DEFAULT_MAX_SHARED_MEMORY, // equivalent to 4GB
         }
     }
 }
