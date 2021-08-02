@@ -8,7 +8,7 @@ use crate::service::{
 use anyhow::*;
 use log::{debug, info};
 use proxy_wasm::{
-    hostcalls::{dequeue_shared_queue, register_shared_queue},
+    hostcalls::{dequeue_shared_queue, register_shared_queue, set_shared_data},
     traits::{Context, RootContext},
     types::LogLevel,
 };
@@ -18,7 +18,10 @@ use std::str::FromStr;
 use std::time::Duration;
 use thiserror::Error;
 use threescale::{
-    proxy::{get_application_from_cache, set_application_to_cache, CacheKey},
+    proxy::{
+        get_application_from_cache, set_application_to_cache, CacheKey, SHARED_MEMORY_INITIAL_SIZE,
+        SHARED_MEMORY_KEY,
+    },
     structs::{
         AppId, AppIdentifier, AppKey, Application, Message, Period, PeriodWindow, ServiceId,
         ServiceToken, ThreescaleData, UsageReport,
@@ -91,14 +94,28 @@ struct SingletonService {
 impl RootContext for SingletonService {
     // Message queue will get registered when on_vm_start callback gets called.
     fn on_vm_start(&mut self, _vm_configuration_size: usize) -> bool {
-        if let Ok(q_id) = register_shared_queue(QUEUE_NAME) {
-            self.queue_id = Some(q_id);
+        match register_shared_queue(QUEUE_NAME) {
+            Ok(q_id) => self.queue_id = Some(q_id),
+            Err(e) => {
+                debug!("registering MQ failed: {:?}", e);
+                return false; // MQ is essential for correct function of proxy
+            }
         }
-        // TODO : handle MQ failure, change info to trace after dev
+        // TODO: change info to trace after dev
         info!(
             "Registered new message queue with id: {}",
             self.queue_id.unwrap()
         );
+
+        // Initialize shared memory counter with anything that's not significant.
+        if let Err(e) = set_shared_data(
+            SHARED_MEMORY_KEY,
+            Some(&SHARED_MEMORY_INITIAL_SIZE.to_be_bytes()),
+            None,
+        ) {
+            debug!("Initializing shared memory key failed: {:?}", e);
+            return false;
+        }
         true
     }
 
