@@ -113,7 +113,7 @@ jobs:
           golint -set_exit_status=1 ./...
       
       - name: Building application
-        run: make build CARGO_EXTRA_ARGS=--all-features
+        run: make build CACHE_EXTRA_ARGS=--all-features
 
       - name: Running Integration tests
         run: make integration    

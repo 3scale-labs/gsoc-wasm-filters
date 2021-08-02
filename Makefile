@@ -3,11 +3,8 @@
 build: export BUILD?=debug
 build: auth
 	@echo "> Building cache_filter and singleton_service"
-    ifeq ($(BUILD), release)
-		cargo build --target=wasm32-unknown-unknown --release $(CARGO_EXTRA_ARGS)
-    else
-		cargo build --target=wasm32-unknown-unknown $(CARGO_EXTRA_ARGS)
-    endif
+	make cache
+	make service
 	cp target/wasm32-unknown-unknown/$(BUILD)/cache_filter.wasm ./deployments/docker-compose/cache_filter.wasm
 	cp target/wasm32-unknown-unknown/$(BUILD)/singleton_service.wasm ./deployments/docker-compose/singleton_service.wasm
 
@@ -15,9 +12,9 @@ cache: export BUILD?=debug
 cache:
 	@echo "Building cache_filter"
     ifeq ($(BUILD), release)
-		cargo build --package cache-filter --target=wasm32-unknown-unknown --release $(CARGO_EXTRA_ARGS)
+		cargo build --package cache-filter --target=wasm32-unknown-unknown --release $(CACHE_EXTRA_ARGS)
     else
-		cargo build --package cache-filter --target=wasm32-unknown-unknown $(CARGO_EXTRA_ARGS) 
+		cargo build --package cache-filter --target=wasm32-unknown-unknown $(CACHE_EXTRA_ARGS) 
     endif
 	cp target/wasm32-unknown-unknown/$(BUILD)/cache_filter.wasm ./deployments/docker-compose/cache_filter.wasm
 
