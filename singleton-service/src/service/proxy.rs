@@ -19,8 +19,8 @@ use std::time::Duration;
 use thiserror::Error;
 use threescale::{
     proxy::{
-        get_application_from_cache, set_application_to_cache, CacheKey, SHARED_MEMORY_INITIAL_SIZE,
-        SHARED_MEMORY_KEY,
+        get_application_from_cache, set_application_to_cache, CacheKey, SHARED_MEMORY_COUNTER_KEY,
+        SHARED_MEMORY_INITIAL_SIZE,
     },
     structs::{
         AppId, AppIdentifier, AppKey, Application, Message, Period, PeriodWindow, ServiceId,
@@ -109,7 +109,7 @@ impl RootContext for SingletonService {
 
         // Initialize shared memory counter with anything that's not significant.
         if let Err(e) = set_shared_data(
-            SHARED_MEMORY_KEY,
+            SHARED_MEMORY_COUNTER_KEY,
             Some(&SHARED_MEMORY_INITIAL_SIZE.to_be_bytes()),
             None,
         ) {

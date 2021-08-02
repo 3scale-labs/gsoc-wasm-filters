@@ -4,7 +4,7 @@ use proxy_wasm::hostcalls::{get_shared_data, set_shared_data};
 use std::convert::TryInto;
 use std::hash::{Hash, Hasher};
 
-pub const SHARED_MEMORY_KEY: &str = "SHARED_MEMORY_COUNTER";
+pub const SHARED_MEMORY_COUNTER_KEY: &str = "SHARED_MEMORY_COUNTER";
 pub const SHARED_MEMORY_INITIAL_SIZE: u64 = 1000;
 
 #[derive(Debug, thiserror::Error)]
@@ -123,7 +123,7 @@ fn get_cache_pair_size(key: &str) -> usize {
 
 // Adds delta bytes to the shared memory usage counter
 fn update_shared_memory_size(delta: i32) -> Result<(), anyhow::Error> {
-    let current_size = match get_shared_data(SHARED_MEMORY_KEY) {
+    let memory_used = match get_shared_data(SHARED_MEMORY_COUNTER_KEY) {
         Ok((Some(bytes), _)) => {
             let arr: [u8; 8] = match bytes.try_into() {
                 Ok(res) => res,
@@ -134,7 +134,7 @@ fn update_shared_memory_size(delta: i32) -> Result<(), anyhow::Error> {
         Ok((None, _)) => {
             warn!("shared memory size was not initialized at the start or got deleted somehow!");
             if let Err(e) = set_shared_data(
-                SHARED_MEMORY_KEY,
+                SHARED_MEMORY_COUNTER_KEY,
                 Some(&SHARED_MEMORY_INITIAL_SIZE.to_be_bytes()),
                 None,
             ) {
@@ -153,18 +153,22 @@ fn update_shared_memory_size(delta: i32) -> Result<(), anyhow::Error> {
 
     let final_size: u64;
     if delta.is_negative() {
-        if current_size <= (-delta).try_into().unwrap() {
+        if memory_used <= (-delta).try_into().unwrap() {
             // This condition is theoretically not possible because memory should keep on
             // increasing since we have no option of deleting the data. So, check your calcs!
             final_size = SHARED_MEMORY_INITIAL_SIZE;
         } else {
-            final_size = current_size.saturating_sub((-delta).try_into().unwrap());
+            final_size = memory_used.saturating_sub((-delta).try_into().unwrap());
         }
     } else {
-        final_size = current_size.saturating_add((-delta).try_into().unwrap());
+        final_size = memory_used.saturating_add(delta.try_into().unwrap());
     }
 
-    if let Err(e) = set_shared_data(SHARED_MEMORY_KEY, Some(&final_size.to_be_bytes()), None) {
+    if let Err(e) = set_shared_data(
+        SHARED_MEMORY_COUNTER_KEY,
+        Some(&final_size.to_be_bytes()),
+        None,
+    ) {
         anyhow::bail!(
             "failed to update shared memory size: {:?}",
             CacheError::ProxyStatus(e as u8)
