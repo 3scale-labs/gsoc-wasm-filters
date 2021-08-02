@@ -8,8 +8,8 @@ pub enum UpdateMetricsError {
     DurationOverflow,
     #[error("request is rate-limited")]
     RateLimited,
-    #[error("application set was unsuccessful")]
-    CacheUpdateFail,
+    #[error("application set was unsuccessful: {0}")]
+    CacheUpdateFail(String),
 }
 
 // updates application to reflect consumed quota if not rate-limited
@@ -57,8 +57,8 @@ pub fn limit_check_and_update_application(
 
     // request is not rate-limited and will be set to cache
     let cache_key = CacheKey::from(&app.service_id, &app.app_id);
-    if !set_application_to_cache(&cache_key.as_string(), app, app_cas) {
-        return Err(UpdateMetricsError::CacheUpdateFail);
+    if let Err(e) = set_application_to_cache(&cache_key.as_string(), app, app_cas) {
+        return Err(UpdateMetricsError::CacheUpdateFail(e.to_string()));
     }
     Ok(())
 }

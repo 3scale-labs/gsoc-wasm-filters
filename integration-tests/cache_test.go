@@ -181,7 +181,7 @@ func (suite *CacheTestSuite) TestRateLimitFlow() {
 		fmt.Printf("Response #%d: %v\n", i, res)
 
 		// Allow proxy to process the request and make the test more predictable
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 
 		var logs []string
 		unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)

@@ -19,6 +19,8 @@ pub enum CacheError {
     ProxyStatus(u8),
     #[error("deserializing bincode data failed")]
     DeserializeFail(#[from] bincode::ErrorKind),
+    #[error("serializing into bincode format failed")]
+    SerializeFail,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -94,44 +96,54 @@ pub fn set_app_id_to_cache(user_key: &UserKey, app_id: &AppId) -> Result<(), Cac
 
 // if cas is 0, cache record is overwritten
 // returns false on set failure
-pub fn set_application_to_cache(key: &str, app: &Application, cas: u32) -> bool {
+pub fn set_application_to_cache(
+    key: &str,
+    app: &Application,
+    cas: u32,
+) -> Result<(), anyhow::Error> {
     info!("setting application with key: {}", key);
-    let prev_memory_usage = get_cache_pair_size(key) as i32;
-    let serialized_app = bincode::serialize::<Application>(app).unwrap();
+    let prev_memory_usage = (get_cache_pair_size(key)?) as i32;
+    let serialized_app = bincode::serialize::<Application>(app)?;
     let memory_delta: i32 = (key.len() as i32) + (serialized_app.len() as i32) - prev_memory_usage;
     if let Err(e) = set_shared_data(key, Some(&serialized_app), Some(cas)) {
-        debug!("set operation failed for key: {} : {:?}", key, e);
-        return false;
+        anyhow::bail!(
+            "set operation failed for key: {} : {:?}",
+            key,
+            CacheError::ProxyStatus(e as u8)
+        );
     }
+
+    // No strict compilance for memory counter to be 100% accurate, so if it fails three times
+    // and since app is already updated, we can trade accuracy for performace.
     for num_try in 0..3 {
         match update_shared_memory_size(memory_delta) {
             Ok(()) => break,
             Err(e) => debug!("try#{} : failed to update memory counter: {}", num_try, e),
         }
     }
-    true
+    Ok(())
 }
 
 // returns memory used in bytes for both key and value pair stored.
-fn get_cache_pair_size(key: &str) -> usize {
+fn get_cache_pair_size(key: &str) -> Result<usize, CacheError> {
     match get_shared_data(key) {
-        Ok((Some(bytes), _)) => key.len() + bytes.len(),
-        Ok((None, _)) => key.len(),
-        Err(_) => 0,
+        Ok((Some(bytes), _)) => Ok(key.len() + bytes.len()),
+        Ok((None, _)) => Ok(key.len()),
+        Err(e) => Err(CacheError::ProxyStatus(e as u8)),
     }
 }
 
 // Adds delta bytes to the shared memory usage counter
 fn update_shared_memory_size(delta: i32) -> Result<(), anyhow::Error> {
-    let memory_used = match get_shared_data(SHARED_MEMORY_COUNTER_KEY) {
-        Ok((Some(bytes), _)) => {
+    let (memory_used, cas) = match get_shared_data(SHARED_MEMORY_COUNTER_KEY) {
+        Ok((Some(bytes), Some(cas))) => {
             let arr: [u8; 8] = match bytes.try_into() {
                 Ok(res) => res,
                 Err(e) => anyhow::bail!("failed to convert vec<u8> to [u8;8]: {:?}", e),
             };
-            u64::from_be_bytes(arr)
+            (u64::from_be_bytes(arr), cas)
         }
-        Ok((None, _)) => {
+        Ok((_, _)) => {
             warn!("shared memory size was not initialized at the start or got deleted somehow!");
             if let Err(e) = set_shared_data(
                 SHARED_MEMORY_COUNTER_KEY,
@@ -143,7 +155,7 @@ fn update_shared_memory_size(delta: i32) -> Result<(), anyhow::Error> {
                     CacheError::ProxyStatus(e as u8)
                 )
             }
-            SHARED_MEMORY_INITIAL_SIZE
+            (SHARED_MEMORY_INITIAL_SIZE, 1) // 1 is the initial CAS value
         }
         Err(e) => anyhow::bail!(
             "getting shared memory size failed: {:?}",
@@ -167,7 +179,7 @@ fn update_shared_memory_size(delta: i32) -> Result<(), anyhow::Error> {
     if let Err(e) = set_shared_data(
         SHARED_MEMORY_COUNTER_KEY,
         Some(&final_size.to_be_bytes()),
-        None,
+        Some(cas),
     ) {
         anyhow::bail!(
             "failed to update shared memory size: {:?}",

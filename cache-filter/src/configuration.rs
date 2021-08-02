@@ -11,12 +11,14 @@ pub struct FilterConfig {
     pub max_shared_memory_bytes: u64,
 }
 
+const DEFAULT_MAX_SHARED_MEMORY: u64 = 4294967296;
+
 impl Default for FilterConfig {
     fn default() -> Self {
         FilterConfig {
             failure_mode_deny: true,
             max_tries: 5,
-            max_shared_memory_bytes: 4294967296, // equivalent to 4GB
+            max_shared_memory_bytes: DEFAULT_MAX_SHARED_MEMORY, // equivalent to 4GB
         }
     }
 }

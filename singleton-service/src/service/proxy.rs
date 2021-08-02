@@ -40,8 +40,8 @@ pub enum SingletonServiceError {
     #[error("Error retrieving local cache entry for cache key: {0}")]
     GetCacheFailure(String),
 
-    #[error("Error settiing local cache entry for cache key: {0}")]
-    SetCacheFailure(String),
+    #[error("Error setting local cache entry for cache key: {0}: {1}")]
+    SetCacheFailure(String, String),
 
     #[error("Empty reports for authorize for app_id: {0}")]
     EmptyAuthUsages(String),
@@ -277,9 +277,10 @@ impl SingletonService {
                     req_time,
                 ) {
                     Ok(()) => Ok(()),
-                    Err(UpdateMetricsError::CacheUpdateFail) => {
+                    Err(UpdateMetricsError::CacheUpdateFail(reason)) => {
                         anyhow::bail!(SingletonServiceError::SetCacheFailure(
-                            cache_key.as_string()
+                            cache_key.as_string(),
+                            reason
                         ))
                     }
                     Err(e) => {
@@ -463,12 +464,11 @@ impl SingletonService {
                         };
                     }
 
-                    set_application_to_cache(
+                    return set_application_to_cache(
                         CacheKey::from(&service_id, &app_id).as_string().as_ref(),
                         &app,
                         0,
                     );
-                    Ok(())
                 } else {
                     anyhow::bail!(SingletonServiceError::AuthResponse)
                 }
