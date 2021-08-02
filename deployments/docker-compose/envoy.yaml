@@ -100,8 +100,8 @@ static_resources:
                       },
                       "services": [
                         {
-                          "id": "test_service_id",
-                          "token": "test_service_token",
+                          "id": "test-service-id",
+                          "token": "test-service-token",
                           "authorities": [
                             "*"
                           ],

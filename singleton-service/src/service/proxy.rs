@@ -78,6 +78,7 @@ pub fn _start() {
             },
             cache_keys: HashMap::new(),
             report_requests: HashMap::new(),
+            auth_requests: HashMap::new(),
         })
     });
 }
@@ -89,6 +90,7 @@ struct SingletonService {
     delta_store: DeltaStore,
     cache_keys: HashMap<CacheKey, ServiceToken>,
     report_requests: HashMap<u32, Report>,
+    auth_requests: HashMap<u32, CacheKey>,
 }
 
 impl RootContext for SingletonService {
@@ -234,10 +236,14 @@ impl Context for SingletonService {
             match self.get_http_call_response_body(0, body_size) {
                 Some(bytes) => {
                     info!("Auth response");
-                    // TODO : Handle auth processing.
-                    #[allow(unused_must_use)]
+                    // If the response for the authorize request is 404 (app not found),
+                    // delete the application from the cache.
+                    if let Err(SingletonServiceError::AuthResponse) =
+                        self.handle_auth_response(bytes, status)
                     {
-                        self.handle_auth_response(bytes, status);
+                        self.handle_auth_failure(token_id);
+                    } else {
+                        self.auth_requests.remove(&token_id);
                     }
                 }
                 None => {
@@ -252,8 +258,11 @@ impl Context for SingletonService {
                 "HTTP request timeout for request with token_id: {}",
                 token_id
             );
+            // Clear the context_id mapping hashmap.
             if self.report_requests.contains_key(&token_id) {
                 self.handle_report_response(status, &token_id);
+            } else if self.auth_requests.contains_key(&token_id) {
+                self.auth_requests.remove(&token_id);
             }
         }
     }
@@ -363,7 +372,7 @@ impl SingletonService {
                     self.report_requests.insert(token_id, report);
                 }
                 Err(err) => {
-                    info!("Error: {}", err);
+                    info!("Report call local failure: {}", err);
                 }
             }
         }
@@ -371,7 +380,7 @@ impl SingletonService {
     }
 
     /// Update the local cache by sending authorize requests to 3scale SM API.
-    fn update_local_cache(&self) {
+    fn update_local_cache(&mut self) {
         for (cache_key, service_token) in self.cache_keys.iter() {
             if let Ok(auth_request) = auth(
                 cache_key.service_id().as_ref().to_string(),
@@ -381,7 +390,14 @@ impl SingletonService {
             .and_then(|auth_app| build_auth_request(&auth_app))
             {
                 // TODO : Handle local failure.
-                self.perform_http_call(&auth_request).unwrap();
+                match self.perform_http_call(&auth_request) {
+                    Ok(token_id) => {
+                        self.auth_requests.insert(token_id, cache_key.clone());
+                    }
+                    Err(err) => {
+                        info!("Auth call local failure: {}", err);
+                    }
+                }
             } else {
                 // TODO : Handle threescalers auth request creation.
                 info!("Error creating Auth request")
@@ -391,7 +407,11 @@ impl SingletonService {
 
     /// Handle Authorize response received from the 3scale SM API. Depending on the response,
     /// several operations will be performed like cache update.
-    fn handle_auth_response(&self, response: Vec<u8>, status: &str) -> Result<(), anyhow::Error> {
+    fn handle_auth_response(
+        &self,
+        response: Vec<u8>,
+        status: &str,
+    ) -> Result<(), SingletonServiceError> {
         // TODO : Handle cache update after enabling list keys extension for both 200 and 409.
         match Authorization::from_str(std::str::from_utf8(&response).unwrap()) {
             Ok(Authorization::Status(data)) => {
@@ -470,16 +490,16 @@ impl SingletonService {
                         0,
                     );
                 } else {
-                    anyhow::bail!(SingletonServiceError::AuthResponse)
+                    Err(SingletonServiceError::AuthResponse)
                 }
             }
             Ok(Authorization::Error(error)) => {
                 info!("auth error response: {:?}", error);
-                anyhow::bail!(SingletonServiceError::AuthResponse)
+                Err(SingletonServiceError::AuthResponse)
             }
             Err(e) => {
                 info!("error processing auth response: {:?}", e);
-                anyhow::bail!(SingletonServiceError::AuthResponseProcess)
+                Err(SingletonServiceError::AuthResponseProcess)
             }
         }
     }
@@ -490,5 +510,14 @@ impl SingletonService {
         // TODO : Handle report failure.
         info!("Report status : {} {}", status, token_id);
         self.report_requests.remove(token_id);
+    }
+
+    /// Handle authorize failure in case of 404(app not found) response from the 3scale SM API.
+    fn handle_auth_failure(&mut self, token_id: u32) {
+        if let Some(cache_key) = self.auth_requests.get(&token_id) {
+            info!("Deleting application with key: {:?}", cache_key);
+            remove_application_from_cache(&cache_key.as_string());
+            self.auth_requests.remove(&token_id);
+        }
     }
 }
