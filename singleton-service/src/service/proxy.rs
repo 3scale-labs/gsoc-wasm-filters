@@ -19,8 +19,8 @@ use std::time::Duration;
 use thiserror::Error;
 use threescale::{
     proxy::{
-        get_application_from_cache, set_application_to_cache, CacheKey, SHARED_MEMORY_COUNTER_KEY,
-        SHARED_MEMORY_INITIAL_SIZE,
+        get_application_from_cache, remove_application_from_cache, set_application_to_cache,
+        CacheKey, SHARED_MEMORY_COUNTER_KEY, SHARED_MEMORY_INITIAL_SIZE,
     },
     structs::{
         AppId, AppIdentifier, AppKey, Application, Message, Period, PeriodWindow, ServiceId,
@@ -484,11 +484,17 @@ impl SingletonService {
                         };
                     }
 
-                    return set_application_to_cache(
+                    match set_application_to_cache(
                         CacheKey::from(&service_id, &app_id).as_string().as_ref(),
                         &app,
                         0,
-                    );
+                    ) {
+                        Ok(()) => Ok(()),
+                        Err(_err) => Err(SingletonServiceError::SetCacheFailure(
+                            service_id.as_ref().to_string(),
+                            app_id.as_ref().to_string(),
+                        )),
+                    }
                 } else {
                     Err(SingletonServiceError::AuthResponse)
                 }
