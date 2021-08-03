@@ -1,9 +1,7 @@
 version: '3.7'
 services:
   proxy:
-    build:
-      context: ../
-      dockerfile: metrics/Dockerfile
+    image: envoyproxy/envoy:v1.19.0
     depends_on:
       - backend_service
     networks:
@@ -12,6 +10,12 @@ services:
       - "9095:9095"
       - "9000:9000"
     container_name: envoy
+    volumes: 
+      - "../cache_filter.wasm:/usr/local/bin/cache_filter.wasm"
+      - "../singleton_service.wasm:/usr/local/bin/singleton_service.wasm"
+      - "../threescale_wasm_auth.wasm:/usr/local/bin/threescale_wasm_auth.wasm"
+      - "./envoy.yaml:/etc/envoy/envoy.yaml"
+    command: envoy -c /etc/envoy/envoy.yaml --service-cluster envoyproxy
   
   backend_service:
     image: solsson/http-echo
@@ -62,6 +66,8 @@ services:
   prometheus:
     image: prom/prometheus:v2.28.1
     container_name: prometheus
+    depends_on: 
+      - proxy
     networks: 
       - envoymesh
     volumes: 
@@ -71,6 +77,8 @@ services:
 
   grafana: 
     image: grafana/grafana:8.0.6
+    depends_on: 
+      - proxy
     networks: 
       - envoymesh
     ports: 
@@ -79,6 +87,8 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.24
     container_name: jaeger
+    depends_on: 
+      - proxy
     networks: 
       - envoymesh
     ports: 
