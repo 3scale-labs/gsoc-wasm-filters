@@ -188,3 +188,19 @@ fn update_shared_memory_size(delta: i32) -> Result<(), anyhow::Error> {
     }
     Ok(())
 }
+
+// Deletes an application from the cache. Used by the singleton service
+// to delete an application in case a 404 response is received for the
+// authorize call. Due to unavailability of a deletion API, set_shared_data
+// is used by setting the value as None. However a memory leak occur from the keys.
+// Refer to the upstream isssue here: https://github.com/proxy-wasm/proxy-wasm-rust-sdk/issues/109
+pub fn remove_application_from_cache(key: &str) {
+    match set_shared_data(key, None, None) {
+        Ok(()) => {
+            info!("Deleting application with key: {} successful", key)
+        }
+        Err(err) => {
+            info!("Error deleting application with key: {} {:?}", key, err)
+        }
+    }
+}
