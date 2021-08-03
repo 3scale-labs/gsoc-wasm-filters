@@ -1,0 +1,94 @@
+version: '3.7'
+services:
+  proxy:
+    build:
+      context: ../
+      dockerfile: metrics/Dockerfile
+    depends_on:
+      - backend_service
+    networks:
+      - envoymesh
+    ports:
+      - "9095:9095"
+      - "9000:9000"
+    container_name: envoy
+  
+  backend_service:
+    image: solsson/http-echo
+    networks:
+      - envoymesh
+    environment:
+      - PORT=8000
+    container_name: backend_service
+
+  my-redis:
+    image: redis
+    container_name: my-redis
+    command: --databases 2
+    ports: 
+      - "6379:6379"
+    networks: 
+      - envoymesh
+
+  listener:
+    image: quay.io/3scale/apisonator
+    container_name: listener
+    environment: 
+      - CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0
+      - CONFIG_REDIS_PROXY=redis://redis:6379/1
+      - CONFIG_INTERNAL_API_USER=root
+      - CONFIG_INTERNAL_API_PASSWORD=root
+    ports: 
+      - "3000:3000"
+    links: 
+      - "my-redis:redis"
+    command: 3scale_backend start
+    networks: 
+      - envoymesh
+  
+  worker:
+    image: quay.io/3scale/apisonator
+    container_name: worker
+    environment: 
+      - CONFIG_QUEUES_MASTER_NAME=redis://redis:6379/0
+      - CONFIG_REDIS_PROXY=redis://redis:6379/1
+      - RACK_ENV=production
+    links: 
+      - "my-redis:redis"
+    command: 3scale_backend_worker run
+    networks: 
+      - envoymesh
+
+  prometheus:
+    image: prom/prometheus:v2.28.1
+    container_name: prometheus
+    networks: 
+      - envoymesh
+    volumes: 
+      - "./prometheus.yaml:/etc/prometheus/prometheus.yml"
+    ports: 
+      - "9090:9090"
+
+  grafana: 
+    image: grafana/grafana:8.0.6
+    networks: 
+      - envoymesh
+    ports: 
+      - "3001:3000"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.24
+    container_name: jaeger
+    networks: 
+      - envoymesh
+    ports: 
+      - "9411:9411"
+      - "16686:16686"
+      - "5775:5775/udp"
+    environment: 
+      - COLLECTOR_ZIPKIN_HOST_PORT=9411 
+
+networks:
+  envoymesh:
+    name: envoymesh
+
