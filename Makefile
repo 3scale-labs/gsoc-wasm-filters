@@ -81,8 +81,14 @@ integration: local-services
 	rm -rf integration-tests/artifacts
 	docker-compose -f integration-tests/docker-compose.yaml down
 
-run: clean-apisonator
-	@echo "> Starting services"
-	docker-compose -f deployments/docker-compose/docker-compose.yaml up --build
+run: export METRICS?=false	
+run: clean-apisonator	
+	@echo "> Starting services"	
+    ifeq ($(METRICS), true)	
+		docker-compose -f deployments/docker-compose/metrics/docker-compose.yaml up
+    else
+		docker-compose -f deployments/docker-compose/docker-compose.yaml up --build
+    endif
+
 
 	
