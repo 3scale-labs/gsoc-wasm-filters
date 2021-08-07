@@ -4,8 +4,9 @@ use crate::{
 };
 use crate::{debug, info, warn};
 use proxy_wasm::{
+    hostcalls::{get_shared_data, set_shared_data, set_tick_period},
     traits::{Context, HttpContext},
-    types::Action,
+    types::{Action, Status},
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -26,9 +27,10 @@ use threescalers::response::{Authorization, AuthorizationStatus};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
+const DEFAULT_TICK_PERIOD_MILLIS: u64 = 200;
 
 #[derive(Debug, thiserror::Error)]
-enum CacheHitError {
+pub enum CacheHitError {
     #[error("duration since time later than self")]
     TimeConversionErr(#[from] std::time::SystemTimeError),
     #[error("failure of is_rate_limited error")]
@@ -77,6 +79,7 @@ pub enum RequestDataError {
     UpstreamBuilderFail(#[from] threescalers::Error),
 }
 
+#[derive(Clone)]
 pub struct CacheFilter {
     pub context_id: u32,
     pub config: FilterConfig,
@@ -233,7 +236,7 @@ impl CacheFilter {
     }
 
     // app_cas can be zero if fetched for the first from 3scale
-    fn handle_cache_hit(
+    pub fn handle_cache_hit(
         &mut self,
         app: &mut Application,
         mut app_cas: u32,
@@ -367,12 +370,32 @@ impl CacheFilter {
         );
 
         // change user_key to app_id for further processing
+        let mut update_cache_key = false;
         if let AppIdentifier::UserKey(user_key) = self.cache_key.app_id() {
             self.req_data.app_id = app_identifier.clone();
             set_app_id_to_cache(user_key, &app_id)?;
+            update_cache_key = true;
         }
 
-        self.cache_key = CacheKey::from(&service_id, &app_identifier);
+        let callout_key = format!("callout_{}", self.cache_key.as_string());
+        if update_cache_key {
+            let new_cache_key = CacheKey::from(&service_id, &app_identifier);
+            // required because on_tick should target correct cache_key.
+            crate::filter::root::WAITING_CONTEXTS.with(|waiters| {
+                waiters
+                    .borrow_mut()
+                    .entry(callout_key)
+                    .and_modify(|filter| (*filter).cache_key = new_cache_key.clone());
+
+                if let Err(e) = self.free_callout_lock(&self.cache_key) {
+                    warn!(
+                        self.context_id,
+                        "failed to delete callout-lock when handling auth resp: {:?}", e
+                    )
+                }
+                self.cache_key = new_cache_key;
+            });
+        }
 
         if let Some(reports) = response.usage_reports() {
             for usage in reports {
@@ -497,7 +520,7 @@ impl Context for CacheFilter {
                         if response.is_authorized() || response.usage_reports().is_some() {
                             if let Err(e) = self.handle_auth_response(&response) {
                                 warn!(self.context_id, "handling auth response failed: {:?}", e);
-                                request_process_failure(self, self)
+                                request_process_failure(self)
                             }
                         } else if cfg!(feature = "visible_logs") {
                             let (key, val) =
@@ -521,7 +544,7 @@ impl Context for CacheFilter {
                             "authorization error with code: {}",
                             auth_error.code()
                         );
-                        request_process_failure(self, self);
+                        request_process_failure(self);
                         return;
                     }
                     Err(e) => {
@@ -531,7 +554,7 @@ impl Context for CacheFilter {
                             e,
                             token_id
                         );
-                        request_process_failure(self, self);
+                        request_process_failure(self);
                         return;
                     }
                 }
@@ -546,7 +569,7 @@ impl Context for CacheFilter {
                     self.context_id,
                     "Found nothing in the response with token: {}", token_id
                 );
-                request_process_failure(self, self);
+                request_process_failure(self);
             }
         }
     }
