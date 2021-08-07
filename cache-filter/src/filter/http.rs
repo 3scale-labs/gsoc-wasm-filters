@@ -4,8 +4,9 @@ use crate::{
 };
 use crate::{debug, info, warn};
 use proxy_wasm::{
+    hostcalls::{get_shared_data, set_shared_data, set_tick_period},
     traits::{Context, HttpContext},
-    types::Action,
+    types::{Action, Status},
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -26,9 +27,10 @@ use threescalers::response::{Authorization, AuthorizationStatus};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
+const DEFAULT_TICK_PERIOD_MILLIS: u64 = 200;
 
 #[derive(Debug, thiserror::Error)]
-enum CacheHitError {
+pub enum CacheHitError {
     #[error("duration since time later than self")]
     TimeConversionErr(#[from] std::time::SystemTimeError),
     #[error("failure of is_rate_limited error")]
@@ -77,6 +79,7 @@ pub enum RequestDataError {
     UpstreamBuilderFail(#[from] threescalers::Error),
 }
 
+#[derive(Clone)]
 pub struct CacheFilter {
     pub context_id: u32,
     pub config: FilterConfig,
@@ -121,8 +124,22 @@ impl HttpContext for CacheFilter {
                         self.context_id,
                         "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
-                    // TODO: avoid multiple calls for identical requests
-                    return do_auth_call(self, self, &request_data);
+                    match self.set_callout_lock(&self.cache_key) {
+                        Ok(true) => return do_auth_call(self, self, &request_data),
+                        Ok(false) => {
+                            self.add_context_to_waitlist();
+                            return Action::Pause;
+                        }
+                        Err(e) => {
+                            warn!(
+                                self.context_id,
+                                "failed to set callout-lock for request(key: {}): {:?}",
+                                self.cache_key.as_string(),
+                                e
+                            );
+                            return in_request_failure(self);
+                        }
+                    }
                 }
             }
         }
@@ -135,16 +152,28 @@ impl HttpContext for CacheFilter {
                     Ok(()) => Action::Continue,
                     Err(e) => {
                         warn!(self.context_id, "cache hit flow failed: {}", e);
-                        in_request_failure(self, self)
+                        in_request_failure(self)
                     }
                 }
             }
             Err(e) => {
                 info!(self.context_id, "cache miss: {}", e);
-                // TODO: Avoid multiple calls for same application
-                // saving request data to use when there is response from 3scale
-                // fetching new application state using authorize endpoint
-                do_auth_call(self, self, &request_data)
+                match self.set_callout_lock(&self.cache_key) {
+                    Ok(true) => do_auth_call(self, self, &request_data),
+                    Ok(false) => {
+                        self.add_context_to_waitlist();
+                        Action::Pause
+                    }
+                    Err(e) => {
+                        warn!(
+                            self.context_id,
+                            "failed to set callout-lock for request(key: {}): {:?}",
+                            self.cache_key.as_string(),
+                            e
+                        );
+                        in_request_failure(self)
+                    }
+                }
             }
         }
     }
@@ -172,8 +201,42 @@ impl CacheFilter {
         true
     }
 
+    fn add_context_to_waitlist(&self) {
+        let callout_key = format!("callout_{}", self.cache_key.as_string());
+        crate::filter::root::WAITING_CONTEXTS.with(|waiters| {
+            if waiters
+                .borrow_mut()
+                .insert(callout_key.clone(), self.clone())
+                .is_some()
+            {
+                // should not be possible but just in case.
+                warn!(
+                    self.context_id,
+                    "already added a similar callout(key: {})", callout_key
+                );
+                self.send_http_response(500, vec![], Some(b"Internal Failure"));
+                return;
+            }
+
+            info!(
+                self.context_id,
+                "successfully added context to the callout wait-list",
+            );
+        });
+        if let Err(e) = set_tick_period(Duration::from_millis(DEFAULT_TICK_PERIOD_MILLIS)) {
+            warn!(self.context_id, "failed to set tick period: {:?}", e);
+            // error due to internal problem.
+            self.send_http_response(500, vec![], Some(b"Internal Failure"));
+
+            // remove previously added context since it's now just consuming memory.
+            crate::filter::root::WAITING_CONTEXTS.with(|waiters| {
+                waiters.borrow_mut().remove(&callout_key);
+            })
+        }
+    }
+
     // app_cas can be zero if fetched for the first from 3scale
-    fn handle_cache_hit(
+    pub fn handle_cache_hit(
         &mut self,
         app: &mut Application,
         mut app_cas: u32,
@@ -243,6 +306,59 @@ impl CacheFilter {
         Ok(())
     }
 
+    // Callout lock is acquired by placing a key-value pair inside shared data.
+    // Since, only one thread is allowed to access shared data (host uses mutex) thus only one winner;
+    fn set_callout_lock(&self, cache_key: &CacheKey) -> Result<bool, Status> {
+        let request_key = format!("callout_{}", cache_key.as_string());
+        info!(
+            self.context_id,
+            "trying to set callout-lock for key: {}", request_key
+        );
+
+        // check if lock is already acquired or not
+        match get_shared_data(&request_key)? {
+            (None, cas) => {
+                // we can also add thread id as value for better debugging.
+                match set_shared_data(&request_key, Some(b"lock"), cas) {
+                    Ok(()) => Ok(true),                    // lock acquired
+                    Err(Status::CasMismatch) => Ok(false), // someone acquired it first
+                    Err(e) => Err(e),
+                }
+            }
+            (_, _) => {
+                info!(
+                    self.context_id,
+                    "callout lock for request(key: {}) already acquired by another thread",
+                    request_key
+                );
+                Ok(false)
+            }
+        }
+    }
+
+    // NOTE: Right now, there is no option of deleting the pair instead only the value can be erased,
+    // and it requires changes in the ABI so change this because it will lead to better memory usage.
+    fn free_callout_lock(&self, cache_key: &CacheKey) -> Result<(), Status> {
+        let request_key = format!("callout_{}", cache_key.as_string());
+
+        if let Err(Status::NotFound) = get_shared_data(&request_key) {
+            warn!(
+                self.context_id,
+                "trying to free non-existing callout-lock ({})", request_key
+            );
+            return Err(Status::NotFound);
+        }
+
+        if let Err(e) = set_shared_data(&request_key, None, None) {
+            warn!(
+                self.context_id,
+                "failed to delete the callout-lock from shared data: {}: {:?}", request_key, e
+            );
+            return Err(e);
+        }
+        Ok(())
+    }
+
     fn handle_auth_response(
         &mut self,
         response: &AuthorizationStatus,
@@ -265,12 +381,32 @@ impl CacheFilter {
         );
 
         // change user_key to app_id for further processing
+        let mut update_cache_key = false;
         if let AppIdentifier::UserKey(user_key) = self.cache_key.app_id() {
             self.req_data.app_id = app_identifier.clone();
             set_app_id_to_cache(user_key, &app_id)?;
+            update_cache_key = true;
         }
 
-        self.cache_key = CacheKey::from(&service_id, &app_identifier);
+        let callout_key = format!("callout_{}", self.cache_key.as_string());
+        if update_cache_key {
+            let new_cache_key = CacheKey::from(&service_id, &app_identifier);
+            // required because on_tick should target correct cache_key.
+            crate::filter::root::WAITING_CONTEXTS.with(|waiters| {
+                waiters
+                    .borrow_mut()
+                    .entry(callout_key)
+                    .and_modify(|filter| (*filter).cache_key = new_cache_key.clone());
+
+                if let Err(e) = self.free_callout_lock(&self.cache_key) {
+                    warn!(
+                        self.context_id,
+                        "failed to delete callout-lock when handling auth resp: {:?}", e
+                    )
+                }
+                self.cache_key = new_cache_key;
+            });
+        }
 
         if let Some(reports) = response.usage_reports() {
             for usage in reports {
@@ -395,7 +531,7 @@ impl Context for CacheFilter {
                         if response.is_authorized() || response.usage_reports().is_some() {
                             if let Err(e) = self.handle_auth_response(&response) {
                                 warn!(self.context_id, "handling auth response failed: {:?}", e);
-                                request_process_failure(self, self)
+                                request_process_failure(self)
                             }
                         } else if cfg!(feature = "visible_logs") {
                             let (key, val) =
@@ -419,7 +555,7 @@ impl Context for CacheFilter {
                             "authorization error with code: {}",
                             auth_error.code()
                         );
-                        request_process_failure(self, self);
+                        request_process_failure(self);
                         return;
                     }
                     Err(e) => {
@@ -429,7 +565,7 @@ impl Context for CacheFilter {
                             e,
                             token_id
                         );
-                        request_process_failure(self, self);
+                        request_process_failure(self);
                         return;
                     }
                 }
@@ -444,7 +580,7 @@ impl Context for CacheFilter {
                     self.context_id,
                     "Found nothing in the response with token: {}", token_id
                 );
-                request_process_failure(self, self);
+                request_process_failure(self);
             }
         }
     }
