@@ -243,6 +243,48 @@ impl CacheFilter {
         Ok(())
     }
 
+    // Callout lock is acquired by placing a key-value pair inside shared data.
+    // Since, only one thread is allowed to access shared data (host uses mutex) thus only one winner;
+    fn set_callout_lock(&self, cache_key: &CacheKey) -> Result<bool, Status> {
+        let request_key = format!("callout_{}", cache_key.as_string());
+
+        // check if lock is already acquired or not
+        match get_shared_data(&request_key) {
+            Ok((None, cas)) => {
+                // we can also add thread id as value for better debugging.
+                match set_shared_data(&request_key, Some(b"lock"), cas) {
+                    Ok(()) => Ok(true),                    // lock acquired
+                    Err(Status::CasMismatch) => Ok(false), // someone acquired it first
+                    Err(e) => Err(e),
+                }
+            }
+            Ok((_, _)) => {
+                info!(
+                    self.context_id,
+                    "callout lock for request(key: {}) already acquired by another thread",
+                    request_key
+                );
+                Ok(false)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    // NOTE: Right now, there is no option of deleting the pair instead only the value can be erased,
+    // and it requires changes in the ABI so change this because it will lead to better memory usage.
+    fn free_callout_lock(&self, cache_key: &CacheKey) -> Result<(), Status> {
+        let request_key = format!("callout_{}", cache_key.as_string());
+
+        if let Err(e) = set_shared_data(&request_key, None, None) {
+            warn!(
+                self.context_id,
+                "failed to delete the callout-lock from shared data: {}: {:?}", request_key, e
+            );
+            return Err(e);
+        }
+        Ok(())
+    }
+
     fn handle_auth_response(
         &mut self,
         response: &AuthorizationStatus,
