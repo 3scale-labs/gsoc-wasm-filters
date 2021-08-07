@@ -121,8 +121,22 @@ impl HttpContext for CacheFilter {
                         self.context_id,
                         "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
-                    // TODO: avoid multiple calls for identical requests
-                    return do_auth_call(self, self, &request_data);
+                    match self.set_callout_lock(&self.cache_key) {
+                        Ok(true) => return do_auth_call(self, self, &request_data),
+                        Ok(false) => {
+                            self.add_context_to_waitlist();
+                            return Action::Pause;
+                        }
+                        Err(e) => {
+                            warn!(
+                                self.context_id,
+                                "failed to set callout-lock for request(key: {}): {:?}",
+                                self.cache_key.as_string(),
+                                e
+                            );
+                            return in_request_failure(self);
+                        }
+                    }
                 }
             }
         }
@@ -135,16 +149,28 @@ impl HttpContext for CacheFilter {
                     Ok(()) => Action::Continue,
                     Err(e) => {
                         warn!(self.context_id, "cache hit flow failed: {}", e);
-                        in_request_failure(self, self)
+                        in_request_failure(self)
                     }
                 }
             }
             Err(e) => {
                 info!(self.context_id, "cache miss: {}", e);
-                // TODO: Avoid multiple calls for same application
-                // saving request data to use when there is response from 3scale
-                // fetching new application state using authorize endpoint
-                do_auth_call(self, self, &request_data)
+                match self.set_callout_lock(&self.cache_key) {
+                    Ok(true) => do_auth_call(self, self, &request_data),
+                    Ok(false) => {
+                        self.add_context_to_waitlist();
+                        Action::Pause
+                    }
+                    Err(e) => {
+                        warn!(
+                            self.context_id,
+                            "failed to set callout-lock for request(key: {}): {:?}",
+                            self.cache_key.as_string(),
+                            e
+                        );
+                        in_request_failure(self)
+                    }
+                }
             }
         }
     }
@@ -170,6 +196,40 @@ impl CacheFilter {
             return false;
         }
         true
+    }
+
+    fn add_context_to_waitlist(&self) {
+        let callout_key = format!("callout_{}", self.cache_key.as_string());
+        crate::filter::root::WAITING_CONTEXTS.with(|waiters| {
+            if waiters
+                .borrow_mut()
+                .insert(callout_key.clone(), self.clone())
+                .is_some()
+            {
+                // should not be possible but just in case.
+                warn!(
+                    self.context_id,
+                    "already added a similar callout(key: {})", callout_key
+                );
+                self.send_http_response(500, vec![], Some(b"Internal Failure"));
+                return;
+            }
+
+            info!(
+                self.context_id,
+                "successfully added context to the callout wait-list",
+            );
+        });
+        if let Err(e) = set_tick_period(Duration::from_millis(DEFAULT_TICK_PERIOD_MILLIS)) {
+            warn!(self.context_id, "failed to set tick period: {:?}", e);
+            // error due to internal problem.
+            self.send_http_response(500, vec![], Some(b"Internal Failure"));
+
+            // remove previously added context since it's now just consuming memory.
+            crate::filter::root::WAITING_CONTEXTS.with(|waiters| {
+                waiters.borrow_mut().remove(&callout_key);
+            })
+        }
     }
 
     // app_cas can be zero if fetched for the first from 3scale
