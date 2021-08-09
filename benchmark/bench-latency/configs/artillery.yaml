@@ -16,6 +16,6 @@ scenarios:
       - get:
           url: "/"
           headers:
-            x-app-id: 23f118be
-            x-app-key: 44d128988763aee1b0ff0691f9686f7e
- 
+            x-app-id: APP_ID
+            x-app-key: APP_KEY
+

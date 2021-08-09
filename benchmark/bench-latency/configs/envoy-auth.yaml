@@ -73,8 +73,8 @@ static_resources:
                       },
                       "services": [
                         {
-                          "id": "2555417908737",
-                          "token": "2331c2349cf232ddd5531d0cb31a9eeee64bef80a38d418a96448bbf8406c4c5",
+                          "id": "SERVICE_ID",
+                          "token": "SERVICE_TOKEN",
                           "authorities": [
                             "*"
                           ],

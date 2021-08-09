@@ -5,24 +5,29 @@
 In this benchmark, 3 different proxy setups are used to compare and contrast the HTTP latencies.
 
 1. Proxy with threescale auth filter, cache filter and singleton service. (Scenario 1)
-    * In this case auth filter will just pass the 3scale keys to cache filter. In case of a cache miss, cache filter will perform a authorize request to the 3scale SM API and fetch the application. In case of a cache hit, cache filter will process the request with the cached information.
+    * In this case auth filter will just pass the 3scale keys to cache filter. In case of a cache miss, cache filter will perform an authorize request to the 3scale SM API and fetch the application. In case of a cache hit, cache filter will process the request with the cached data available.
 2. Proxy with threescale auth filter. (Scenario 2)
-    * In this case auth filter will make authrep requests to the 3scale SM API for every request.
+    * In this case auth filter will make authrep requests to the 3scale SM API for every request from the client.
 3. Proxy without any plugins (filters or services). (Scenario 3)
     * No plugins applied in this case.
 
 ### Specifications of the infrastructure used
 
-* Proxy - m5a.2xlarge   32G
-* Client (load generator) - c5a.xlarge 	16G
-* Service - c5a.xlarge 	16G
+| Instance | Machine type | Memory  |
+| ------- |:-------------:| -----:|
+| Proxy | m5a.2xlarge | 32G |
+| Client | c5a.xlarge | 16G |
+| Service | c5a.xlarge | 16G |
 
 ### Software and tooling
 
-* Envoyproxy v1.18.2
-* threescale-wasm-auth 9ad206e4ce20be1c4b75d264a867b9e11acfc4af
-* gsoc-wasm-filters ce5547d40d0fbec1970115dd1ed3365b27a5c0b4
-* Artillery: 1.7.6
+| Software | Version | 
+| ------- |:-------------: |
+| Envoyproxy | v1.18.2 |
+| threescale-wasm-auth | 9ad206e4ce20be1c4b75d264a867b9e11acfc4af | 
+| gsoc-wasm-filters | ce5547d40d0fbec1970115dd1ed3365b27a5c0b4 |
+| Artillery | v1.7.6 |
+
 * All host machines running Ubuntu 21.04 (GNU/Linux 5.11.0-1014-aws x86_64)
 
 ### Running the benchmark setup
@@ -49,7 +54,7 @@ The following figure shows the variation of latencies during the benchmark time 
 
 ![Variation of latencies with time interval](reports/scenario1-latency.png "Scenario 1 latencies")
 
-In the above figure, the sudden drop of the maximum latency at the begining represents the transition from cache miss to cache hit. The first request will cause a cache miss and the subsequent requests will process the requests using the cache.
+In the above figure, the sudden drop of the maximum latency at the begining represents the transition from cache miss to cache hit. The first request will cause a cache miss and the subsequent requests will process the requests using the cache reducing the latencies.
 
 ![Overall latency histogram](reports/scenario1-overall.png "Scenario 1 latencies")
 
@@ -61,9 +66,11 @@ The following figure shows the variation of latencies during the benchmark time 
 
 ![Variation of latencies with time interval](reports/scenario2-latency.png "Scenario 2 latencies")
 
-In the above figure maximum latency shows a high variance when compared with scenario 1 max latency due to the external HTTP calls. In the scenario 2, for each request from client, an external HTTP call to 3scale SM API is performed. The latency for this external HTTP call depends on the external network status and it affects the max latency variation.
+In the above figure maximum latency shows a high variance when compared with scenario 1 max latency due to the external HTTP calls. In the scenario 2, for each request from client, an external HTTP call to 3scale SM API is performed. The latency for this external HTTP call depends on the external network latencies and it affects the max latency variation.
 
 ![Overall latency histogram](reports/scenario2-overall.png "Scenario 2 latencies")
+
+This scenario has the highest latencies when compared with other scenarios.
 
 #### Scenario 3 (no plugins)
 
@@ -86,4 +93,4 @@ Out of the 3 scenarios, lowest latencies are present in this case.
 | 2 | 7 | 391 | 12 | 20 | 52 |
 | 3 | 1 | 16 | 2 | 2 | 3 |
 
-From the above comparison, it is clear that lowest latencies are present for scenario 3 which is without plugins. And the next lowest latencies are for the scenario 1 which is the proxy cache scenario. Highest latencies are present in the scenario 2. Also the large difference of latencies between the scenario 1 and 2 shows that the cache decreases the overall latency significantly. Also the small difference between the scenario 1 and 3 shows that the extra latency and performance drop due to WASM plugins is very low or negligible.
+From the above comparison, it is clear that lowest latencies are present for scenario 3 which is without plugins. And the next lowest latencies are for the scenario 1 which is the proxy cache scenario. Highest latencies are present in the scenario 2. Also the large difference of latencies between the scenario 1 and 2 shows that the cache implementation decreases the overall latencies significantly. Also the small difference between the scenario 1 and 3 shows that the extra latency and performance drop due to WASM plugins is very low or negligible.
