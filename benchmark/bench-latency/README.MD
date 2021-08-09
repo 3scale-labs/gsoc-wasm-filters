@@ -54,7 +54,7 @@ The following figure shows the variation of latencies during the benchmark time 
 
 ![Variation of latencies with time interval](reports/scenario1-latency.png "Scenario 1 latencies")
 
-In the above figure, the sudden drop of the maximum latency at the begining represents the transition from cache miss to cache hit. The first request will cause a cache miss and the subsequent requests will process the requests using the cache reducing the latencies.
+**In the above figure, the sudden drop of the maximum latency at the begining represents the transition from cache miss to cache hit. The first request will cause a cache miss and the subsequent requests will process the requests using the cache reducing the latencies.**
 
 ![Overall latency histogram](reports/scenario1-overall.png "Scenario 1 latencies")
 
@@ -94,3 +94,5 @@ Out of the 3 scenarios, lowest latencies are present in this case.
 | 3 | 1 | 16 | 2 | 2 | 3 |
 
 From the above comparison, it is clear that lowest latencies are present for scenario 3 which is without plugins. And the next lowest latencies are for the scenario 1 which is the proxy cache scenario. Highest latencies are present in the scenario 2. Also the large difference of latencies between the scenario 1 and 2 shows that the cache implementation decreases the overall latencies significantly. Also the small difference between the scenario 1 and 3 shows that the extra latency and performance drop due to WASM plugins is very low or negligible.
+
+All the reports for this benchmark can be found in the `reports/` folder.
