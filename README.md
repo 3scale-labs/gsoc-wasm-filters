@@ -136,6 +136,14 @@ There are 5 incoming request requirements for cache-filter either from the previ
 ![cache filter flow diagram](assets/img/cache-filter-flow.png)
 **Configuration option**
 
+There are 3 configurable behaviours for the cache-filter:
+
+* `failure_mode_deny` (boolean): If any unrecoverable error is encountered, what should proxy do? If set to true, it will deny them (which is also the default case), otherwise, it will allow them to proceed to next filter in the chain.
+
+* `max_tries` (u32): How many times should a thread retry to write data to the shared data if failed due to CasMismatch. Default is 5.
+
+* `max_shared_memory_bytes` (u64): How many memory (in bytes) should shared data be allowed to use before it starts evicting elements? Default is around 4GB (4294967296 bytes to be exact).
+
 > Note: Cache-filter rely on singleton service to batch and push reporting metrics to the 3scale SM API.
 
 ## Writing integration tests
@@ -212,13 +220,13 @@ Also for advanced testing cases, `TearDownTest()` can be used to clean up after 
 }
 ```
 will replace the following key in the config:
-```json
+```yaml
 ....
 "upstream":
   ....
   "url": {{or .UpstreamURL "\"localhost:3000\""}},
 ....
-// Note: if 'UpstreamURL key is not provided, next value i.e "localhost:3000" will be used instead.
+# Note: if 'UpstreamURL key is not provided, next value i.e "localhost:3000" will be used instead.
 ````
 For a working example, that generates a custom config file and starts proxy using that, please refer to `config_test.go` file.
 
