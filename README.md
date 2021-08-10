@@ -179,6 +179,27 @@ func (suite *AppCredentialTestSuite) TearDownSuite() {
 ```
 Also for advanced testing cases, `TearDownTest()` can be used to clean up after every test.
 
+**Generating custom envoy configs**
+
+`GenerateConfig` allows you to generate custom envoy.yaml files during the test time phase. It takes two params: 1) name of the file (e.g. `temp.yaml`) 2) JSON formated key-value pairs. These keys should match those present in the `config_template.yaml` file and will be replaced with the value provided.
+
+```json
+{ 
+	"UpstreamURL": "\"http://dogecoin.net:3000\"",
+}
+```
+will replace the following key in the config:
+```json
+....
+"upstream":
+  ....
+  "url": {{or .UpstreamURL "\"localhost:3000\""}},
+....
+// Note: if 'UpstreamURL key is not provided, next value i.e "localhost:3000" will be used instead.
+````
+For a working example, that generates a custom config file and starts proxy using that, please refer to `config_test.go` file.
+
+For making any changes to `config_template.yaml`, please refer to https://golang.org/pkg/text/template/
 
 <!-- LICENSE -->
 ## License
