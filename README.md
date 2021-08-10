@@ -133,6 +133,7 @@ There are 5 incoming request requirements for cache-filter either from the previ
 
 **Flow**
 
+![cache filter flow diagram](assets/img/cache-filter-flow.png)
 **Configuration option**
 
 > Note: Cache-filter rely on singleton service to batch and push reporting metrics to the 3scale SM API.
