@@ -27,6 +27,7 @@
 * [About the Project](#about-the-project)
 * [Prerequisites](#prerequisites)
 * [Installation](#installation)
+* [Cache-filter Design](#cache-filter-design)
 * [Integration tests](#writing-integration-tests)
 * [License](#license)
 
@@ -114,6 +115,13 @@ curl -X GET 'localhost:9095/' -H 'x-app-id: fcf4db29' -H 'x-app-key: 9a0435ee68f
 ```sh
 curl -X GET 'localhost:9095/?api_key=46de54605a1321aa3838480c5fa91bcc'
 ```
+
+## Cache-filter Design
+**Input requirements**
+
+**Flow**
+
+**Configuration option**
 
 ## Writing integration tests
 
