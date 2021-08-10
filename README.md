@@ -35,7 +35,7 @@
 
 The project is done as a part of Google Summer of Code 2021 programme. The main intention of the project is to 
 implement an in-proxy authorization cache for envoy proxy which performs authorization and rate limiting based on
-the in-proxy cache reducing the request latency. Also it will reduce the traffic on the threescale service management API by
+the in-proxy cache reducing the request latency. Also, it will reduce the traffic on the threescale service management API by
 synchronizing with the service management API based on various policies defined instead of making 1 HTTP call per request.       
 
 ## Prerequisites
@@ -117,7 +117,13 @@ curl -X GET 'localhost:9095/?api_key=46de54605a1321aa3838480c5fa91bcc'
 ## Writting integration tests
 
 Integration tests are written in golang and executed by starting related services in docker containers using docker-compose. 
-Helper methods are implemented in `main.go` file in the integration-tests. Integration tests can be implemented in 2 ways.
+
+In integration-tests directory,
+* `main.go` contains helper method for generating custom config files, serial searching patterns through response headers, starting/stoping proxy and middleware service.
+* `apisonator.go` contains helper methods for maintaining local state of Apisonator during tests.
+* `middleware` directory contains source code of a service to add custom delay to the response from apisonator. Note: when using this service, you need to update `envoy.yaml` file to point to it and it will act as a proxy server in-between.
+
+Integration tests can be implemented in 2 ways.
 
 1. For general cases where no specific deployment pattern is required. The basic template with 1 envoy proxy and 1 solsson/http-echo can be used.
 
