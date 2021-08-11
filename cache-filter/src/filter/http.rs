@@ -312,8 +312,8 @@ impl CacheFilter {
         let request_key = format!("callout_{}", cache_key.as_string());
 
         // check if lock is already acquired or not
-        match get_shared_data(&request_key) {
-            Ok((None, cas)) => {
+        match get_shared_data(&request_key)? {
+            (None, cas) => {
                 // we can also add thread id as value for better debugging.
                 match set_shared_data(&request_key, Some(b"lock"), cas) {
                     Ok(()) => Ok(true),                    // lock acquired
@@ -321,7 +321,7 @@ impl CacheFilter {
                     Err(e) => Err(e),
                 }
             }
-            Ok((_, _)) => {
+            (_, _) => {
                 info!(
                     self.context_id,
                     "callout lock for request(key: {}) already acquired by another thread",
@@ -329,7 +329,6 @@ impl CacheFilter {
                 );
                 Ok(false)
             }
-            Err(e) => Err(e),
         }
     }
 
