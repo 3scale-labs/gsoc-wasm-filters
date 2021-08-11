@@ -144,6 +144,15 @@ There are 3 configurable behaviours for the cache-filter:
 
 * `max_shared_memory_bytes` (u64): How many memory (in bytes) should shared data be allowed to use before it starts evicting elements? Default is around 4GB (4294967296 bytes to be exact).
 
+**visible-logs feature for testing**
+
+This is a cargo feature added into the cache to get trace logs back in the header response of a request, which can be used to write integration tests. To enable this feature, build cache with:
+```bash
+make cache CACHE_EXTRA_ARGS=--all-features
+# or
+make build CACHE_EXTRA_ARGS=--all-features
+```
+
 > Note: Cache-filter rely on singleton service to batch and push reporting metrics to the 3scale SM API.
 
 ## Writing integration tests
