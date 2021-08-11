@@ -27,6 +27,8 @@
 * [About the Project](#about-the-project)
 * [Prerequisites](#prerequisites)
 * [Installation](#installation)
+* [Cache-filter Design](#cache-filter-design)
+* [Integration tests](#writing-integration-tests)
 * [License](#license)
 
 
@@ -35,7 +37,7 @@
 
 The project is done as a part of Google Summer of Code 2021 programme. The main intention of the project is to 
 implement an in-proxy authorization cache for envoy proxy which performs authorization and rate limiting based on
-the in-proxy cache reducing the request latency. Also it will reduce the traffic on the threescale service management API by
+the in-proxy cache reducing the request latency. Also, it will reduce the traffic on the threescale service management API by
 synchronizing with the service management API based on various policies defined instead of making 1 HTTP call per request.       
 
 ## Prerequisites
@@ -114,10 +116,55 @@ curl -X GET 'localhost:9095/' -H 'x-app-id: fcf4db29' -H 'x-app-key: 9a0435ee68f
 curl -X GET 'localhost:9095/?api_key=46de54605a1321aa3838480c5fa91bcc'
 ```
 
-## Writting integration tests
+## Cache-filter Design
+**Request requirements**
+
+There are 5 incoming request requirements for cache-filter either from the previous filter ([threescale-wasm-auth](https://github.com/3scale/threescale-wasm-auth/)) in the chain or client making the call if it's being used as the first filter in the chain.
+
+* Header `x-3scale-service-token`: It is required for authentication by SM API.
+
+* Header `x-3scale-service-id`: It is used in cache and for authentication by SM API.
+
+* Header `x-3scale-usages`: These are the metrics that the request is trying to consume. Format is list of `"metric": increaseByValue(e.g. 5)`
+
+* Header `x-3scale-cluster-name`: It's the name of the cluster that deploys 3scale SM API.
+
+* Header `x-3scale-upstream-url`: It's required to get authority info.
+
+**Flow**
+
+![cache filter flow diagram](assets/img/cache-filter-flow.png)
+**Configuration option**
+
+There are 3 configurable behaviours for the cache-filter:
+
+* `failure_mode_deny` (boolean): If any unrecoverable error is encountered, what should proxy do? If set to true, it will deny them (which is also the default case), otherwise, it will allow them to proceed to next filter in the chain.
+
+* `max_tries` (u32): How many times should a thread retry to write data to the shared data if failed due to CasMismatch. Default is 5.
+
+* `max_shared_memory_bytes` (u64): How many memory (in bytes) should shared data be allowed to use before it starts evicting elements? Default is around 4GB (4294967296 bytes to be exact).
+
+**visible-logs feature for testing**
+
+This is a cargo feature added into the cache to get trace logs back in the header response of a request, which can be used to write integration tests. To enable this feature, build cache with:
+```bash
+make cache CACHE_EXTRA_ARGS=--all-features
+# or
+make build CACHE_EXTRA_ARGS=--all-features
+```
+
+> Note: Cache-filter rely on singleton service to batch and push reporting metrics to the 3scale SM API.
+
+## Writing integration tests
 
 Integration tests are written in golang and executed by starting related services in docker containers using docker-compose. 
-Helper methods are implemented in `main.go` file in the integration-tests. Integration tests can be implemented in 2 ways.
+
+In integration-tests directory,
+* `main.go` contains helper method for generating custom config files, serial searching patterns through response headers, starting/stoping proxy and middleware service.
+* `apisonator.go` contains helper methods for maintaining local state of Apisonator during tests.
+* `middleware` directory contains source code of a service to add custom delay to the response from apisonator. Note: when using this service, you need to update `envoy.yaml` file to point to it and it will act as a proxy server in-between.
+
+Integration tests can be implemented in 2 ways.
 
 1. For general cases where no specific deployment pattern is required. The basic template with 1 envoy proxy and 1 solsson/http-echo can be used.
 
@@ -172,6 +219,27 @@ func (suite *AppCredentialTestSuite) TearDownSuite() {
 ```
 Also for advanced testing cases, `TearDownTest()` can be used to clean up after every test.
 
+**Generating custom envoy configs**
+
+`GenerateConfig` allows you to generate custom envoy.yaml files during the test time phase. It takes two params: 1) name of the file (e.g. `temp.yaml`) 2) JSON formated key-value pairs. These keys should match those present in the `config_template.yaml` file and will be replaced with the value provided.
+
+```json
+{ 
+	"UpstreamURL": "\"http://dogecoin.net:3000\"",
+}
+```
+will replace the following key in the config:
+```yaml
+....
+"upstream":
+  ....
+  "url": {{or .UpstreamURL "\"localhost:3000\""}},
+....
+# Note: if 'UpstreamURL key is not provided, next value i.e "localhost:3000" will be used instead.
+````
+For a working example, that generates a custom config file and starts proxy using that, please refer to `config_test.go` file.
+
+For making any changes to `config_template.yaml`, please refer to https://golang.org/pkg/text/template/
 
 <!-- LICENSE -->
 ## License
