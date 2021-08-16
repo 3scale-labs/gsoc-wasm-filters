@@ -38,7 +38,12 @@
 The project is done as a part of Google Summer of Code 2021 programme. The main intention of the project is to 
 implement an in-proxy authorization cache for envoy proxy which performs authorization and rate limiting based on
 the in-proxy cache reducing the request latency. Also, it will reduce the traffic on the threescale service management API by
-synchronizing with the service management API based on various policies defined instead of making 1 HTTP call per request.       
+synchronizing with the service management API based on various policies defined instead of making 1 HTTP call per request.
+
+## High level architecture overview
+
+![architecture overview](assets/img/architecture-overview.png)
+
 
 ## Prerequisites
 
