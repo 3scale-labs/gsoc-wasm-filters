@@ -1,5 +1,6 @@
 use crate::configuration::FilterConfig;
 use crate::filter::http::CacheFilter;
+use crate::rand::thread_rng::{thread_rng_init_fallible, ThreadRng};
 use crate::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
@@ -16,6 +17,7 @@ pub fn _start() {
         Box::new(CacheFilterRoot {
             context_id,
             config: FilterConfig::default(),
+            rng: ThreadRng,
         })
     });
 }
@@ -23,6 +25,8 @@ pub fn _start() {
 struct CacheFilterRoot {
     context_id: u32,
     config: FilterConfig,
+    rng: ThreadRng,
+    id: u32,
 }
 
 impl RootContext for CacheFilterRoot {
@@ -32,6 +36,23 @@ impl RootContext for CacheFilterRoot {
     }
 
     fn on_configure(&mut self, _config_size: usize) -> bool {
+        // Initialize the PRNG for this thread in the root context
+        // This only needs to happen once per thread. Since we are
+        // single-threaded, this means it just needs to happen once.
+        self.rng = match thread_rng_init_fallible(self, context_id) {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(
+                    context_id,
+                    "FATAL: failed to initialize thread pseudo RNG: {}", e
+                );
+                panic!("failed to initialize thread pseudo RNG: {}", e);
+            }
+        };
+
+        self.id = self.rng.next_u32();
+        info!(self.context_id, "root initialized with id: {}", self.id);
+
         //Check for the configuration passed by envoy.yaml
         let configuration: Vec<u8> = match self.get_configuration() {
             Some(c) => c,
@@ -64,6 +85,7 @@ impl RootContext for CacheFilterRoot {
     fn create_http_context(&self, context: u32) -> Option<Box<dyn HttpContext>> {
         Some(Box::new(CacheFilter {
             context_id: context,
+            root_id: self.id,
             config: self.config.clone(),
             update_cache_from_singleton: false,
             cache_key: CacheKey::default(),
