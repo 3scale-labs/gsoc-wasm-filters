@@ -81,6 +81,7 @@ pub enum RequestDataError {
 
 pub struct CacheFilter {
     pub context_id: u32,
+    pub root_id: u32,
     pub config: FilterConfig,
     pub update_cache_from_singleton: bool,
     pub cache_key: CacheKey,
