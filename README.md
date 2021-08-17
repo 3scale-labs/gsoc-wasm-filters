@@ -25,6 +25,7 @@
 ## Table of Contents
 
 * [About the Project](#about-the-project)
+* [High level architecture overview](#high-level-architecture-overview)
 * [Prerequisites](#prerequisites)
 * [Installation](#installation)
 * [Cache-filter Design](#cache-filter-design)
@@ -44,6 +45,48 @@ synchronizing with the service management API based on various policies defined 
 
 ![architecture overview](assets/img/architecture-overview.png)
 
+Above diagram shows the request flow through the filter chain inside envoy proxy. There are 3 main components in the diagram. (without the http router)
+
+### Auth filter
+
+The request is first intercepted by the `threescale-wasm-auth` filter. In it's usual operation, it will make an `authrep` call to 3scale SM API.
+But in this case, auth filter is used in its passthrough mode. In the passthrough mode, auth filter will just pass the 3scale metadata to the next 
+filter in the filter chain which is the cache filter. The following metadata values are passed to the cache filter under the current implementation.
+
+* Service token
+* Service ID
+* Usages
+* Cluster name
+* Upstream URL
+* Timeout
+* Userkey/AppID/AppKey
+
+### Cache filter
+
+The main functionality of the cache filter is to process the request using the cache data stored in the proxy. Depending on the availability of cache data
+for a particular combination of Service ID and App ID, two scenarios are possible.
+1. Cache hit - A cache record for the combination of Service ID and App ID exist in the cache.
+2. Cache miss - No cache record for the combination of Service ID and App ID.
+
+In case of a cache miss, cache filter will perform an authorize request to fetch the application data from the 3scale SM API and will pause the request processing untill a response arives. Depending on the response, it will process the request further or send a direct response to the client. eg: 401 in case of unauthorized.
+
+In case of a cache hit, cache filter will process the request based on the stored cache data for that application.
+
+In both cases after handling cache miss or cache hit, cache filter will try to update the usages stored in the cache. If the usage update fails due to concurrency 
+issues, then the cache filter will delegate that task to the singleton service. Even when the usage update is successful, cache filter has to send the request metadata to the singleton service for reporting purposes.
+
+Cache filter executes in the worker threads. Refer the [cache-filter-documentation](docs/CACHE.md) for a more detailed explaination about the cache filter.
+
+### Singleton service
+
+Singleton service has 2 main functionalities.
+
+1. Flush the usages to the 3scale SM API using report requests.
+2. Update the in-proxy cache by sending authorize requests to the 3scale SM API.
+
+Singleton service executes in the main thread and executes independantly of the request lifecycle.
+
+Refer the [singleton-service-documentation](docs/SINGLETON.md) for a more detailed explaination about the singleton service.
 
 ## Prerequisites
 
@@ -120,45 +163,6 @@ curl -X GET 'localhost:9095/' -H 'x-app-id: fcf4db29' -H 'x-app-key: 9a0435ee68f
 ```sh
 curl -X GET 'localhost:9095/?api_key=46de54605a1321aa3838480c5fa91bcc'
 ```
-
-## Cache-filter Design
-**Request requirements**
-
-There are 5 incoming request requirements for cache-filter either from the previous filter ([threescale-wasm-auth](https://github.com/3scale/threescale-wasm-auth/)) in the chain or client making the call if it's being used as the first filter in the chain.
-
-* Header `x-3scale-service-token`: It is required for authentication by SM API.
-
-* Header `x-3scale-service-id`: It is used in cache and for authentication by SM API.
-
-* Header `x-3scale-usages`: These are the metrics that the request is trying to consume. Format is list of `"metric": increaseByValue(e.g. 5)`
-
-* Header `x-3scale-cluster-name`: It's the name of the cluster that deploys 3scale SM API.
-
-* Header `x-3scale-upstream-url`: It's required to get authority info.
-
-**Flow**
-
-![cache filter flow diagram](assets/img/cache-filter-flow.png)
-**Configuration option**
-
-There are 3 configurable behaviours for the cache-filter:
-
-* `failure_mode_deny` (boolean): If any unrecoverable error is encountered, what should proxy do? If set to true, it will deny them (which is also the default case), otherwise, it will allow them to proceed to next filter in the chain.
-
-* `max_tries` (u32): How many times should a thread retry to write data to the shared data if failed due to CasMismatch. Default is 5.
-
-* `max_shared_memory_bytes` (u64): How many memory (in bytes) should shared data be allowed to use before it starts evicting elements? Default is around 4GB (4294967296 bytes to be exact).
-
-**visible-logs feature for testing**
-
-This is a cargo feature added into the cache to get trace logs back in the header response of a request, which can be used to write integration tests. To enable this feature, build cache with:
-```bash
-make cache CACHE_EXTRA_ARGS=--all-features
-# or
-make build CACHE_EXTRA_ARGS=--all-features
-```
-
-> Note: Cache-filter rely on singleton service to batch and push reporting metrics to the 3scale SM API.
 
 ## Writing integration tests
 
