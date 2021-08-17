@@ -18,6 +18,7 @@ pub fn _start() {
             context_id,
             config: FilterConfig::default(),
             rng: ThreadRng,
+            id: 0,
         })
     });
 }
@@ -39,11 +40,11 @@ impl RootContext for CacheFilterRoot {
         // Initialize the PRNG for this thread in the root context
         // This only needs to happen once per thread. Since we are
         // single-threaded, this means it just needs to happen once.
-        self.rng = match thread_rng_init_fallible(self, context_id) {
+        self.rng = match thread_rng_init_fallible(self, self.context_id) {
             Ok(r) => r,
             Err(e) => {
                 warn!(
-                    context_id,
+                    self.context_id,
                     "FATAL: failed to initialize thread pseudo RNG: {}", e
                 );
                 panic!("failed to initialize thread pseudo RNG: {}", e);
