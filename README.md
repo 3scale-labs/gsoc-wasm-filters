@@ -29,6 +29,7 @@
 * [Prerequisites](#prerequisites)
 * [Installation](#installation)
 * [Integration tests](#writing-integration-tests)
+* [Additional features](#additional-features)
 * [Roadmap](#roadmap)
 * [Contributing](#contributing)
 * [License](#license)
@@ -96,8 +97,6 @@ Refer the [singleton-service-documentation](docs/SINGLETON.md) for a more detail
 * Cargo
 * Make
 
-> Note: wasm-snip and wasm-opt needs to be installed on the host machine for the release build.
-
 ### Prerequisites for integration tests
 * Golang
 * Docker
@@ -119,7 +118,7 @@ cd gsoc-wasm-filters
 make build
 ```
 * Production build
-> For the production build `wasm-opt` and `wasm-snip` are required as the auth filter requires them for build optimizations. 
+> For the release build `wasm-opt` and `wasm-snip` are required as the auth filter requires them for build optimizations. 
 ```sh
 make build BUILD=release
 ```
@@ -241,6 +240,11 @@ For a working example, that generates a custom config file and starts proxy usin
 
 For making any changes to `config_template.yaml`, please refer to https://golang.org/pkg/text/template/
 
+## Additional features
+
+1. Integrating metrics and observability.
+
+One of the primary goals of Envoy is to make the network understandable. Envoy emits a large number of statistics depending on how it is configured. Refer the [metrics-documentation](docs/METRICS.md) for a more detailed explaination about the project setup with metrics.
 <!-- ROADMAP -->
 ## Roadmap
 
