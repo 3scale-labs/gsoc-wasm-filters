@@ -28,8 +28,9 @@
 * [High level architecture overview](#high-level-architecture-overview)
 * [Prerequisites](#prerequisites)
 * [Installation](#installation)
-* [Cache-filter Design](#cache-filter-design)
 * [Integration tests](#writing-integration-tests)
+* [Roadmap](#roadmap)
+* [Contributing](#contributing)
 * [License](#license)
 
 
@@ -235,10 +236,27 @@ will replace the following key in the config:
   "url": {{or .UpstreamURL "\"localhost:3000\""}},
 ....
 # Note: if 'UpstreamURL key is not provided, next value i.e "localhost:3000" will be used instead.
-````
+```
 For a working example, that generates a custom config file and starts proxy using that, please refer to `config_test.go` file.
 
 For making any changes to `config_template.yaml`, please refer to https://golang.org/pkg/text/template/
+
+<!-- ROADMAP -->
+## Roadmap
+
+See the [open issues](https://github.com/3scale-labs/gsoc-wasm-filters/issues) for a list of proposed features (and known issues).
+
+
+<!-- CONTRIBUTING -->
+## Contributing
+
+Contributions are what make the open source community such an amazing place to be learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 <!-- LICENSE -->
 ## License
