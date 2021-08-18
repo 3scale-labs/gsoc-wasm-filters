@@ -95,6 +95,8 @@ Refer the [singleton-service-documentation](docs/SINGLETON.md) for a more detail
 * Cargo
 * Make
 
+> Note: wasm-snip and wasm-opt needs to be installed on the host machine for the release build.
+
 ### Prerequisites for integration tests
 * Golang
 * Docker
@@ -150,18 +152,18 @@ make run
 
 5. Send sample test requests for the following scenarios.
 
-> Please note that the application id and service token related to the above tests are hard coded into `deployments/docker-compose/envoy.yaml`.
+> Please note that the service id and service token related to the above tests are hard coded into `deployments/docker-compose/envoy.yaml`.
 
 * Send a GET request with `app_id` and `app_key` pattern.
 
 ```sh
-curl -X GET 'localhost:9095/' -H 'x-app-id: fcf4db29' -H 'x-app-key: 9a0435ee68f5d647f03a80480a97a326'
+curl -X GET 'localhost:9095/' -H 'x-app-id: APP_ID' -H 'x-app-key: APP_KEY'
 ```
 
 * Send a GET request with `user_key` pattern.
 
 ```sh
-curl -X GET 'localhost:9095/?api_key=46de54605a1321aa3838480c5fa91bcc'
+curl -X GET 'localhost:9095/?api_key=USER_KEY'
 ```
 
 ## Writing integration tests
@@ -173,20 +175,8 @@ In integration-tests directory,
 * `apisonator.go` contains helper methods for maintaining local state of Apisonator during tests.
 * `middleware` directory contains source code of a service to add custom delay to the response from apisonator. Note: when using this service, you need to update `envoy.yaml` file to point to it and it will act as a proxy server in-between.
 
-Integration tests can be implemented in 2 ways.
-
-1. For general cases where no specific deployment pattern is required. The basic template with 1 envoy proxy and 1 solsson/http-echo can be used.
-
-Here `docker-compose.yaml` and `Dockerfile` are not needed since it uses already available common template. Only `envoy.yaml` is required.
-First use the `BuildnStartContainers()` helper method to start docker containers by passing the path of the required
-`envoy.yaml`. eg: `BuildnStartContainers("./configs/app-id/envoy.yaml")`. Then implement related testing logic using testify suite and use `BuildStopContainers()` to stop
-the docker containers. Examples can be found in `app_id_test.go`.
-
-2. For special cases where a special docker-compose configuration is required. Need to provide `docker-compose.yaml`, `Dockerfile` and `envoy.yaml`.
-
-First create a directory in the configs folder and add related `docker-compose.yaml`, `Dockerfile` and `envoy.yaml`. Then use `StartContainers()` helper to
-start docker containers by providing the related configuration folder path. eg: `StartContainers("./configs/app-id/docker-compose.yaml")`. Then implement related
-testing logic using testify suite and use `StopContainers("")` to stop the docker containers by providing the path of the related config folder. eg: `StopContainers("./configs/app-id/docker-compose.yaml")`. Examples can be found in `app_id_test.go`.
+When running the integration tests, apisonator, redis instances and the mock backend will start first and will be running for the whole duration of the tests. For each test/test suite, a new proxy instance is created and added to the same docker network that apisonator and other containers are running. This can be done by using the `StartProxy(dockerfile string, envoy string)` method. If a new proxy instance is required for each test, then this method should be used inside a test case at the beginning or in the `BeforeTest()`. If a new proxy instance is required for each test suite, then `StartProxy(dockerfile string, envoy string)` should be used inside
+`SetupSuite()` method. `StopProxy()` method can be used to stop the proxy instance after each test/ test suite.
 
 > For all the tests, it is important to add a delay after container initialization and testing in order to provide time for services to be available when running inside hosts with less performance, CI/CD pipelines.
 

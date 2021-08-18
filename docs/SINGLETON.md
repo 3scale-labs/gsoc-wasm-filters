@@ -67,5 +67,3 @@ bootstrap_extensions:
         configuration: {}
         allow_precompiled: true
 ```
-
-
