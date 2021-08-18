@@ -53,6 +53,7 @@ clean-apisonator:
 
 auth: ## Build threescale_wasm_auth filter. 
 	@echo "> Building threescale_wasm_auth filter"
+	git config pull.rebase false
 	git submodule foreach git pull origin main
 	cd threescale-wasm-auth && \
 	make clean && \
