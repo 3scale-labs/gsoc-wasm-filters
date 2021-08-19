@@ -1,8 +1,10 @@
 use crate::{
     configuration::FilterConfig,
+    debug, info,
+    unique_callout::{free_callout_lock, set_callout_lock},
     utils::{do_auth_call, in_request_failure, request_process_failure},
+    warn,
 };
-use crate::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext},
     types::Action,
@@ -125,9 +127,20 @@ impl HttpContext for CacheFilter {
                         self.context_id,
                         "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
-                    // TODO: avoid multiple calls for identical requests
                     increment_stat(&self.stats.cache_misses);
-                    return do_auth_call(self, self, &request_data);
+                    match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
+                        Ok(true) => do_auth_call(self, self, &request_data),
+                        Ok(false) => Action::Pause,
+                        Err(e) => {
+                            warn!(
+                                self.context_id,
+                                "failed to set callout-lock for request(key: {}): {:?}",
+                                self.cache_key.as_string(),
+                                e
+                            );
+                            in_request_failure(self, self)
+                        }
+                    };
                 }
             }
         }
@@ -142,11 +155,20 @@ impl HttpContext for CacheFilter {
             },
             Err(e) => {
                 info!(self.context_id, "cache miss: {}", e);
-                // TODO: Avoid multiple calls for same application
-                // saving request data to use when there is response from 3scale
-                // fetching new application state using authorize endpoint
                 increment_stat(&self.stats.cache_misses);
-                do_auth_call(self, self, &request_data)
+                match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
+                    Ok(true) => do_auth_call(self, self, &request_data),
+                    Ok(false) => Action::Pause,
+                    Err(e) => {
+                        warn!(
+                            self.context_id,
+                            "failed to set callout-lock for request(key: {}): {:?}",
+                            self.cache_key.as_string(),
+                            e
+                        );
+                        in_request_failure(self, self)
+                    }
+                }
             }
         }
     }
