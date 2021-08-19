@@ -16,6 +16,7 @@ There are 5 incoming request requirements for cache-filter either from the previ
 **Flow**
 
 ![cache filter flow diagram](../assets/img/cache-filter-flow.png)
+
 **Configuration option**
 
 There are 3 configurable behaviours for the cache-filter:
