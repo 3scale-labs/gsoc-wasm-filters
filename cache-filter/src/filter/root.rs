@@ -54,6 +54,13 @@ impl RootContext for CacheFilterRoot {
         self.id = self.rng.next_u32();
         info!(self.context_id, "root initialized with id: {}", self.id);
 
+        // Initializing a thread-specific message queue
+        let queue_id = self.register_shared_queue(&self.id.to_string());
+        info!(
+            self.context_id,
+            "root({}): registered thread-specific MQ ({})", self.id, queue_id
+        );
+
         //Check for the configuration passed by envoy.yaml
         let configuration: Vec<u8> = match self.get_configuration() {
             Some(c) => c,

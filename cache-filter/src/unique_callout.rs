@@ -24,7 +24,7 @@ use threescale::proxy::CacheKey;
 * If you go through above-mentioned algo, no matter the order which thread executes first, second thread
 * will overwrite the first one because None CAS is translated into 0 in SDK and second-if condition is passed-over.
 
-* Now imagine if T1 & T2 use '1'(any but 0) as CAS, first thread will insert a new entry since it's not 
+* Now imagine if T1 & T2 use '1'(any but 0) as CAS, first thread will insert a new entry since it's not
 * already present in the hashmap and second one will get CasMismatch in the result due to second-if condition.
 * NOTE: Since CAS is a u32 integer, after u32::MAX, CAS resets to 1. What this means for unique-callout
 * is that N threads can successfully acquire the lock again when lock was freed with CAS=1. But the chances
