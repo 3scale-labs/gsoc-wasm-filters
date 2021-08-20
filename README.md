@@ -25,10 +25,13 @@
 ## Table of Contents
 
 * [About the Project](#about-the-project)
+* [High level architecture overview](#high-level-architecture-overview)
 * [Prerequisites](#prerequisites)
 * [Installation](#installation)
-* [Cache-filter Design](#cache-filter-design)
 * [Integration tests](#writing-integration-tests)
+* [Additional features](#additional-features)
+* [Roadmap](#roadmap)
+* [Contributing](#contributing)
 * [License](#license)
 
 
@@ -38,7 +41,54 @@
 The project is done as a part of Google Summer of Code 2021 programme. The main intention of the project is to 
 implement an in-proxy authorization cache for envoy proxy which performs authorization and rate limiting based on
 the in-proxy cache reducing the request latency. Also, it will reduce the traffic on the threescale service management API by
-synchronizing with the service management API based on various policies defined instead of making 1 HTTP call per request.       
+synchronizing with the service management API based on various policies defined instead of making 1 HTTP call per request.
+
+## High level architecture overview
+
+![architecture overview](assets/img/architecture-overview.png)
+
+Above diagram shows the request flow through the filter chain inside envoy proxy. There are 3 main components in the diagram. (without the http router)
+
+### Auth filter
+
+The request is first intercepted by the `threescale-wasm-auth` filter. In it's usual operation, it will make an `authrep` call to 3scale SM API.
+But in this case, auth filter is used in its passthrough mode. In the passthrough mode, auth filter will just pass the 3scale metadata to the next 
+filter in the filter chain which is the cache filter. The following metadata values are passed to the cache filter under the current implementation.
+
+* Service token
+* Service ID
+* Usages
+* Cluster name
+* Upstream URL
+* Timeout
+* Userkey/AppID/AppKey
+
+### Cache filter
+
+The main functionality of the cache filter is to process the request using the cache data stored in the proxy. Depending on the availability of cache data
+for a particular combination of Service ID and App ID, two scenarios are possible.
+1. Cache hit - A cache record for the combination of Service ID and App ID exist in the cache.
+2. Cache miss - No cache record for the combination of Service ID and App ID.
+
+In case of a cache miss, cache filter will perform an authorize request to fetch the application data from the 3scale SM API and will pause the request processing untill a response arives. Depending on the response, it will process the request further or send a direct response to the client. eg: 401 in case of unauthorized.
+
+In case of a cache hit, cache filter will process the request based on the stored cache data for that application.
+
+In both cases after handling cache miss or cache hit, cache filter will try to update the usages stored in the cache. If the usage update fails due to concurrency 
+issues, then the cache filter will delegate that task to the singleton service. Even when the usage update is successful, cache filter has to send the request metadata to the singleton service for reporting purposes.
+
+Cache filter executes in the worker threads. Refer the [cache-filter-documentation](docs/CACHE.md) for a more detailed explaination about the cache filter.
+
+### Singleton service
+
+Singleton service has 2 main functionalities.
+
+1. Flush the usages to the 3scale SM API using report requests.
+2. Update the in-proxy cache by sending authorize requests to the 3scale SM API.
+
+Singleton service executes in the main thread and executes independantly of the request lifecycle.
+
+Refer the [singleton-service-documentation](docs/SINGLETON.md) for a more detailed explaination about the singleton service.
 
 ## Prerequisites
 
@@ -68,7 +118,7 @@ cd gsoc-wasm-filters
 make build
 ```
 * Production build
-> For the production build `wasm-opt` and `wasm-snip` are required as the auth filter requires them for build optimizations. 
+> For the release build `wasm-opt` and `wasm-snip` are required as the auth filter requires them for build optimizations. 
 ```sh
 make build BUILD=release
 ```
@@ -102,58 +152,19 @@ make run
 
 5. Send sample test requests for the following scenarios.
 
-> Please note that the application id and service token related to the above tests are hard coded into `deployments/docker-compose/envoy.yaml`.
+> Please note that the service id and service token related to the above tests are hard coded into `deployments/docker-compose/envoy.yaml`.
 
 * Send a GET request with `app_id` and `app_key` pattern.
 
 ```sh
-curl -X GET 'localhost:9095/' -H 'x-app-id: fcf4db29' -H 'x-app-key: 9a0435ee68f5d647f03a80480a97a326'
+curl -X GET 'localhost:9095/' -H 'x-app-id: APP_ID' -H 'x-app-key: APP_KEY'
 ```
 
 * Send a GET request with `user_key` pattern.
 
 ```sh
-curl -X GET 'localhost:9095/?api_key=46de54605a1321aa3838480c5fa91bcc'
+curl -X GET 'localhost:9095/?api_key=USER_KEY'
 ```
-
-## Cache-filter Design
-**Request requirements**
-
-There are 5 incoming request requirements for cache-filter either from the previous filter ([threescale-wasm-auth](https://github.com/3scale/threescale-wasm-auth/)) in the chain or client making the call if it's being used as the first filter in the chain.
-
-* Header `x-3scale-service-token`: It is required for authentication by SM API.
-
-* Header `x-3scale-service-id`: It is used in cache and for authentication by SM API.
-
-* Header `x-3scale-usages`: These are the metrics that the request is trying to consume. Format is list of `"metric": increaseByValue(e.g. 5)`
-
-* Header `x-3scale-cluster-name`: It's the name of the cluster that deploys 3scale SM API.
-
-* Header `x-3scale-upstream-url`: It's required to get authority info.
-
-**Flow**
-
-![cache filter flow diagram](assets/img/cache-filter-flow.png)
-**Configuration option**
-
-There are 3 configurable behaviours for the cache-filter:
-
-* `failure_mode_deny` (boolean): If any unrecoverable error is encountered, what should proxy do? If set to true, it will deny them (which is also the default case), otherwise, it will allow them to proceed to next filter in the chain.
-
-* `max_tries` (u32): How many times should a thread retry to write data to the shared data if failed due to CasMismatch. Default is 5.
-
-* `max_shared_memory_bytes` (u64): How many memory (in bytes) should shared data be allowed to use before it starts evicting elements? Default is around 4GB (4294967296 bytes to be exact).
-
-**visible-logs feature for testing**
-
-This is a cargo feature added into the cache to get trace logs back in the header response of a request, which can be used to write integration tests. To enable this feature, build cache with:
-```bash
-make cache CACHE_EXTRA_ARGS=--all-features
-# or
-make build CACHE_EXTRA_ARGS=--all-features
-```
-
-> Note: Cache-filter rely on singleton service to batch and push reporting metrics to the 3scale SM API.
 
 ## Writing integration tests
 
@@ -164,20 +175,8 @@ In integration-tests directory,
 * `apisonator.go` contains helper methods for maintaining local state of Apisonator during tests.
 * `middleware` directory contains source code of a service to add custom delay to the response from apisonator. Note: when using this service, you need to update `envoy.yaml` file to point to it and it will act as a proxy server in-between.
 
-Integration tests can be implemented in 2 ways.
-
-1. For general cases where no specific deployment pattern is required. The basic template with 1 envoy proxy and 1 solsson/http-echo can be used.
-
-Here `docker-compose.yaml` and `Dockerfile` are not needed since it uses already available common template. Only `envoy.yaml` is required.
-First use the `BuildnStartContainers()` helper method to start docker containers by passing the path of the required
-`envoy.yaml`. eg: `BuildnStartContainers("./configs/app-id/envoy.yaml")`. Then implement related testing logic using testify suite and use `BuildStopContainers()` to stop
-the docker containers. Examples can be found in `app_id_test.go`.
-
-2. For special cases where a special docker-compose configuration is required. Need to provide `docker-compose.yaml`, `Dockerfile` and `envoy.yaml`.
-
-First create a directory in the configs folder and add related `docker-compose.yaml`, `Dockerfile` and `envoy.yaml`. Then use `StartContainers()` helper to
-start docker containers by providing the related configuration folder path. eg: `StartContainers("./configs/app-id/docker-compose.yaml")`. Then implement related
-testing logic using testify suite and use `StopContainers("")` to stop the docker containers by providing the path of the related config folder. eg: `StopContainers("./configs/app-id/docker-compose.yaml")`. Examples can be found in `app_id_test.go`.
+When running the integration tests, apisonator, redis instances and the mock backend will start first and will be running for the whole duration of the tests. For each test/test suite, a new proxy instance is created and added to the same docker network that apisonator and other containers are running. This can be done by using the `StartProxy(dockerfile string, envoy string)` method. If a new proxy instance is required for each test, then this method should be used inside a test case at the beginning or in the `BeforeTest()`. If a new proxy instance is required for each test suite, then `StartProxy(dockerfile string, envoy string)` should be used inside
+`SetupSuite()` method. `StopProxy()` method can be used to stop the proxy instance after each test/ test suite.
 
 > For all the tests, it is important to add a delay after container initialization and testing in order to provide time for services to be available when running inside hosts with less performance, CI/CD pipelines.
 
@@ -236,10 +235,32 @@ will replace the following key in the config:
   "url": {{or .UpstreamURL "\"localhost:3000\""}},
 ....
 # Note: if 'UpstreamURL key is not provided, next value i.e "localhost:3000" will be used instead.
-````
+```
 For a working example, that generates a custom config file and starts proxy using that, please refer to `config_test.go` file.
 
 For making any changes to `config_template.yaml`, please refer to https://golang.org/pkg/text/template/
+
+## Additional features
+
+1. Integrating metrics and observability.
+
+One of the primary goals of Envoy is to make the network understandable. Envoy emits a large number of statistics depending on how it is configured. Refer the [metrics-documentation](docs/METRICS.md) for a more detailed explaination about the project setup with metrics.
+<!-- ROADMAP -->
+## Roadmap
+
+See the [open issues](https://github.com/3scale-labs/gsoc-wasm-filters/issues) for a list of proposed features (and known issues).
+
+
+<!-- CONTRIBUTING -->
+## Contributing
+
+Contributions are what make the open source community such an amazing place to be learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 <!-- LICENSE -->
 ## License
