@@ -193,6 +193,144 @@ pub fn free_callout_lock(
     }
     Ok(())
 }
+
+pub fn add_to_callout_waitlist(context: &CacheFilter) -> Result<(), UniqueCalloutError> {
+    let waiters_key = format!("CW_{}", context.cache_key.as_string());
+    let queue_id = resolve_shared_queue(crate::VM_ID, &context.root_id.to_string()).unwrap();
+    if queue_id.is_none() {
+        // without queue id, we can't signal waiting thread to resume processing.
+        return Err(UniqueCalloutError::MQResolveFail(context.root_id));
+    }
+    let callout_waiter = CalloutWaiter {
+        queue_id: queue_id.unwrap(),
+        http_context_id: context.context_id,
+    };
+    info!(
+        context.context_id,
+        "thread({}): trying to add to callout waitlist", context.root_id
+    );
+
+    // Unless there is some internal error, there is a guarantee that 1 thread successfully
+    // writes to the cache. So, keep trying and eventually every thread will win.
+    loop {
+        match get_shared_data(&waiters_key) {
+            Ok((Some(bytes), Some(cas))) => {
+                info!(
+                    context.context_id,
+                    "thread({}): adding to existing waitlist", context.root_id
+                );
+                match bincode::deserialize::<Vec<CalloutWaiter>>(&bytes) {
+                    Ok(mut callout_waiters) => {
+                        callout_waiters.push(callout_waiter.clone());
+                        let serialized_cw =
+                            match bincode::serialize::<Vec<CalloutWaiter>>(&callout_waiters) {
+                                Ok(res) => res,
+                                Err(e) => {
+                                    return Err(UniqueCalloutError::SerializeFail {
+                                        what: "Vec<CalloutWaiter>",
+                                        reason: *e,
+                                    })
+                                }
+                            };
+                        if let Err(Status::CasMismatch) =
+                            set_shared_data(&waiters_key, Some(&serialized_cw), Some(cas))
+                        {
+                            continue;
+                        }
+                        break;
+                    }
+                    Err(e) => {
+                        return Err(UniqueCalloutError::DeserializeFail {
+                            what: "Vec<CalloutWaiter>",
+                            reason: *e,
+                        });
+                    }
+                }
+            }
+            Ok((_, cas)) => {
+                info!(
+                    context.context_id,
+                    "thread({}): creating a new waitlist", context.root_id
+                );
+                let serialized_cw =
+                    match bincode::serialize::<Vec<CalloutWaiter>>(&vec![callout_waiter.clone()]) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            return Err(UniqueCalloutError::SerializeFail {
+                                what: "Vec<CalloutWaiter>",
+                                reason: *e,
+                            })
+                        }
+                    };
+                // Again exploiting host implementation to avoid multi-initialization:
+                let cas = cas.unwrap_or(1);
+                if let Err(Status::CasMismatch) =
+                    set_shared_data(&waiters_key, Some(&serialized_cw), Some(cas))
+                {
+                    continue;
+                }
+                break;
+            }
+            Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
+        }
+    }
+    WAITING_CONTEXTS.with(|waiters| {
+        waiters
+            .borrow_mut()
+            .insert(context.context_id, context.clone())
+    });
+    Ok(())
+}
+
+pub fn resume_callout_waiters(
+    root_id: u32,
+    context_id: u32,
+    cache_key: &CacheKey,
+) -> Result<(), UniqueCalloutError> {
+    let waiters_key = format!("CW_{}", cache_key.as_string());
+    info!(
+        context_id,
+        "thread({}): trying to resume callout-waiters ({})", root_id, waiters_key
+    );
+
+    match get_shared_data(&waiters_key) {
+        Ok((Some(bytes), _)) => match bincode::deserialize::<Vec<CalloutWaiter>>(&bytes) {
+            Ok(callout_waiters) => {
+                for callout_waiter in callout_waiters {
+                    let ctxt_str = callout_waiter.http_context_id.to_string();
+                    if let Err(e) =
+                        enqueue_shared_queue(callout_waiter.queue_id, Some(ctxt_str.as_bytes()))
+                    {
+                        // There is nothing we can do to signal other threads now and should just
+                        // allow them to timeout and maybe add another mechanism for memory clearance
+                        warn!(
+                            context_id,
+                            "thread({}): enqueue failure for queue({}): {:?}",
+                            root_id,
+                            callout_waiter.queue_id,
+                            e
+                        );
+                    }
+                }
+                // Note: safe for current SDK implementation.
+                set_shared_data(&waiters_key, None, None).unwrap();
+            }
+            Err(e) => {
+                return Err(UniqueCalloutError::DeserializeFail {
+                    what: "Vec<CalloutWaiter>",
+                    reason: *e,
+                });
+            }
+        },
+        Ok((None, _)) => {
+            // This can happen either someother thread freed waiting contexts or
+            // there was only 1 request for this specific application.
+            debug!(
+                context_id,
+                "thread({}): found no callout-waiters ({})", root_id, waiters_key
+            );
+        }
+        Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
     }
     Ok(())
 }
