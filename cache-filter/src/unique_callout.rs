@@ -166,6 +166,7 @@ pub fn free_callout_lock(
     root_id: u32,
     context_id: u32,
     cache_key: &CacheKey,
+) -> Result<(), UniqueCalloutError> {
     let callout_key = format!("CL_{}", cache_key.as_string());
     info!(
         context_id,
@@ -177,7 +178,7 @@ pub fn free_callout_lock(
             context_id,
             "thread ({}): trying to free non-existing callout-lock ({})", root_id, callout_key
         );
-        return Err(Status::NotFound);
+        return Err(UniqueCalloutError::ProxyFailure(Status::NotFound));
     }
 
     if let Err(e) = set_shared_data(&callout_key, None, None) {
@@ -188,7 +189,10 @@ pub fn free_callout_lock(
             callout_key,
             e
         );
-        return Err(e);
+        return Err(UniqueCalloutError::ProxyFailure(e));
+    }
+    Ok(())
+}
     }
     Ok(())
 }
