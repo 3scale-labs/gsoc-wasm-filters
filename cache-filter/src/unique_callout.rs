@@ -5,6 +5,10 @@ use proxy_wasm::{
 };
 use threescale::proxy::CacheKey;
 
+thread_local! {
+    pub static WAITING_CONTEXTS: RefCell<HashMap<u32, CacheFilter>> = RefCell::new(HashMap::new());
+}
+
 // This struct is serialized and stored in the shared data for callout-lock winner
 // to know which thread to wake up and to let waiters know which http context to resume processing.
 #[derive(Deserialize, Serialize, Clone)]
