@@ -1,8 +1,12 @@
-use crate::{info, warn};
+use crate::filter::http::CacheFilter;
+use crate::{debug, info, warn};
 use proxy_wasm::{
-    hostcalls::{get_shared_data, set_shared_data},
+    hostcalls::{enqueue_shared_queue, get_shared_data, resolve_shared_queue, set_shared_data},
     types::Status,
 };
+use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use threescale::proxy::CacheKey;
 
 thread_local! {
