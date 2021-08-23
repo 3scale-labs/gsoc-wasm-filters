@@ -61,27 +61,27 @@ pub fn set_callout_lock(
     context_id: u32,
     cache_key: &CacheKey,
 ) -> Result<bool, Status> {
-    let request_key = format!("callout_{}", cache_key.as_string());
+    let callout_key = format!("CL_{}", cache_key.as_string());
     let root_id_str = root_id.to_string();
     let root_id_str_bytes = root_id_str.as_bytes();
     info!(
         context_id,
-        "thread(id: {}): trying to set callout-lock for request(key: {})", root_id, request_key
+        "thread(id: {}): trying to set callout-lock for request(key: {})", root_id, callout_key
     );
 
     // check if lock is already acquired or not
-    match get_shared_data(&request_key)? {
+    match get_shared_data(&callout_key)? {
         (_, None) => {
             info!(
                 context_id,
-                "thread ({}): trying to acquire lock ({}) the first time", root_id, request_key
+                "thread ({}): trying to acquire lock ({}) the first time", root_id, callout_key
             );
             // Note: CAS is not 'None' here                              ∨∨∨∨∨∨
-            match set_shared_data(&request_key, Some(root_id_str_bytes), Some(1)) {
+            match set_shared_data(&callout_key, Some(root_id_str_bytes), Some(1)) {
                 Ok(()) => {
                     info!(
                         context_id,
-                        "thread ({}): callout-lock ({}) acquired", root_id, request_key
+                        "thread ({}): callout-lock ({}) acquired", root_id, callout_key
                     );
                     Ok(true)
                 }
@@ -90,7 +90,7 @@ pub fn set_callout_lock(
                         context_id,
                         "thread ({}): callout-lock ({}) for already acquired by another thread",
                         root_id,
-                        request_key
+                        callout_key
                     );
                     Ok(false)
                 }
@@ -104,7 +104,7 @@ pub fn set_callout_lock(
                 context_id,
                 "thread ({}): callout-lock ({}) already acquired by thread ({})",
                 root_id,
-                request_key,
+                callout_key,
                 lock_acquired_by
             );
             Ok(false)
@@ -114,15 +114,15 @@ pub fn set_callout_lock(
                 context_id,
                 "thread ({}): callout-lock ({}) was already free and trying to acquire again",
                 root_id,
-                request_key
+                callout_key
             );
-            match set_shared_data(&request_key, Some(root_id_str_bytes), Some(cas)) {
+            match set_shared_data(&callout_key, Some(root_id_str_bytes), Some(cas)) {
                 Ok(()) => {
                     info!(
                         context_id,
                         "thread ({}): callout-lock ({}) successfully acquired",
                         root_id,
-                        request_key
+                        callout_key
                     );
                     Ok(true)
                 }
@@ -131,7 +131,7 @@ pub fn set_callout_lock(
                         context_id,
                         "thread ({}): callout-lock ({}) already acquired by another thread",
                         root_id,
-                        request_key
+                        callout_key
                     );
                     Ok(false)
                 }
@@ -148,27 +148,26 @@ pub fn free_callout_lock(
     root_id: u32,
     context_id: u32,
     cache_key: &CacheKey,
-) -> Result<(), Status> {
-    let request_key = format!("callout_{}", cache_key.as_string());
+    let callout_key = format!("CL_{}", cache_key.as_string());
     info!(
         context_id,
-        "thread ({}): trying to free callout-lock ({})", root_id, request_key
+        "thread ({}): trying to free callout-lock ({})", root_id, callout_key
     );
 
-    if let Err(Status::NotFound) = get_shared_data(&request_key) {
+    if let Err(Status::NotFound) = get_shared_data(&callout_key) {
         warn!(
             context_id,
-            "thread ({}): trying to free non-existing callout-lock ({})", root_id, request_key
+            "thread ({}): trying to free non-existing callout-lock ({})", root_id, callout_key
         );
         return Err(Status::NotFound);
     }
 
-    if let Err(e) = set_shared_data(&request_key, None, None) {
+    if let Err(e) = set_shared_data(&callout_key, None, None) {
         warn!(
             context_id,
             "thread ({}): failed to delete the callout-lock ({}) from shared data: {:?}",
             root_id,
-            request_key,
+            callout_key,
             e
         );
         return Err(e);
