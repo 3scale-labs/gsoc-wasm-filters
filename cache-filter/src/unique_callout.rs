@@ -9,6 +9,24 @@ thread_local! {
     pub static WAITING_CONTEXTS: RefCell<HashMap<u32, CacheFilter>> = RefCell::new(HashMap::new());
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum UniqueCalloutError<'a> {
+    #[error("failed to serialize {what:?} due to {reason:?}")]
+    SerializeFail {
+        what: &'a str,
+        reason: bincode::ErrorKind,
+    },
+    #[error("failed to deserialize {what:?} due to {reason:?}")]
+    DeserializeFail {
+        what: &'a str,
+        reason: bincode::ErrorKind,
+    },
+    #[error("failure due to proxy's internal issue: {0:?}")]
+    ProxyFailure(Status),
+    #[error("failed to resolve thread({0}) specific MQ while adding callout-waiter")]
+    MQResolveFail(u32),
+}
+
 // This struct is serialized and stored in the shared data for callout-lock winner
 // to know which thread to wake up and to let waiters know which http context to resume processing.
 #[derive(Deserialize, Serialize, Clone)]
