@@ -1,7 +1,9 @@
 use crate::{
     configuration::FilterConfig,
     debug, info,
-    unique_callout::{free_callout_lock, set_callout_lock},
+    unique_callout::{
+        add_to_callout_waitlist, free_callout_lock, resume_callout_waiters, set_callout_lock,
+    },
     utils::{do_auth_call, in_request_failure, request_process_failure},
     warn,
 };
@@ -27,10 +29,9 @@ use threescale::{
 use threescalers::response::{Authorization, AuthorizationStatus};
 
 const QUEUE_NAME: &str = "message_queue";
-const VM_ID: &str = "my_vm_id";
 
 #[derive(Debug, thiserror::Error)]
-enum CacheHitError {
+pub enum CacheHitError {
     #[error("duration since time later than self")]
     TimeConversionErr(#[from] std::time::SystemTimeError),
     #[error("failure of is_rate_limited error")]
@@ -79,6 +80,7 @@ pub enum RequestDataError {
     UpstreamBuilderFail(#[from] threescalers::Error),
 }
 
+#[derive(Clone)]
 pub struct CacheFilter {
     pub context_id: u32,
     pub root_id: u32,
@@ -124,9 +126,22 @@ impl HttpContext for CacheFilter {
                         self.context_id,
                         "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
-                    match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
+                    return match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
                         Ok(true) => do_auth_call(self, self, &request_data),
-                        Ok(false) => Action::Pause,
+                        Ok(false) => {
+                            if let Err(e) = add_to_callout_waitlist(self) {
+                                warn!(
+                                    self.context_id,
+                                    "failed to add current context to callout-waitlist: {}", e
+                                );
+                                in_request_failure(self, self);
+                            }
+                            info!(
+                                self.context_id,
+                                "successfully added current context to callout-waitlist"
+                            );
+                            Action::Pause
+                        }
                         Err(e) => {
                             warn!(
                                 self.context_id,
@@ -157,7 +172,20 @@ impl HttpContext for CacheFilter {
                 info!(self.context_id, "cache miss: {}", e);
                 match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
                     Ok(true) => do_auth_call(self, self, &request_data),
-                    Ok(false) => Action::Pause,
+                    Ok(false) => {
+                        if let Err(e) = add_to_callout_waitlist(self) {
+                            warn!(
+                                self.context_id,
+                                "failed to add current context to callout-waitlist: {}", e
+                            );
+                            return in_request_failure(self, self);
+                        }
+                        info!(
+                            self.context_id,
+                            "successfully added current context to callout-waitlist"
+                        );
+                        Action::Pause
+                    }
                     Err(e) => {
                         warn!(
                             self.context_id,
@@ -196,13 +224,13 @@ impl CacheFilter {
     }
 
     // app_cas can be zero if fetched for the first from 3scale
-    fn handle_cache_hit(
+    pub fn handle_cache_hit(
         &mut self,
         app: &mut Application,
         mut app_cas: u32,
     ) -> Result<(), CacheHitError> {
         let queue_id = self
-            .resolve_shared_queue(VM_ID, QUEUE_NAME)
+            .resolve_shared_queue(crate::VM_ID, QUEUE_NAME)
             .ok_or(CacheHitError::MQNotFound)?;
 
         let current_time = self.get_current_time().duration_since(UNIX_EPOCH)?;
@@ -411,57 +439,50 @@ impl Context for CacheFilter {
             self.context_id,
             "received response from 3scale: token: {}", token_id
         );
+
+        // Freeing of callout-lock requires the cache_key used to set the lock but cache_key
+        // attached to 'self' can change inside handle_auth_response (user_key to app_id).
+        let prev_cache_key = self.cache_key.clone();
         match self.get_http_call_response_body(0, body_size) {
-            Some(bytes) => {
-                match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
-                    Ok(Authorization::Status(response)) => {
-                        if response.is_authorized() || response.usage_reports().is_some() {
-                            if let Err(e) = self.handle_auth_response(&response) {
-                                warn!(self.context_id, "handling auth response failed: {:?}", e);
-                                request_process_failure(self, self)
-                            }
-                        } else if cfg!(feature = "visible_logs") {
-                            let (key, val) =
-                                crate::log::visible_logs::get_logs_header_pair(self.context_id);
-                            self.send_http_response(
-                                403,
-                                vec![(key.as_ref(), val.as_ref())],
-                                Some(response.reason().unwrap().as_bytes()),
-                            );
-                        } else {
-                            self.send_http_response(
-                                403,
-                                vec![],
-                                Some(response.reason().unwrap().as_bytes()),
-                            )
+            Some(bytes) => match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
+                Ok(Authorization::Status(response)) => {
+                    if response.is_authorized() || response.usage_reports().is_some() {
+                        if let Err(e) = self.handle_auth_response(&response) {
+                            warn!(self.context_id, "handling auth response failed: {:?}", e);
+                            request_process_failure(self, self)
                         }
-                    }
-                    Ok(Authorization::Error(auth_error)) => {
-                        info!(
-                            self.context_id,
-                            "authorization error with code: {}",
-                            auth_error.code()
+                    } else if cfg!(feature = "visible_logs") {
+                        let (key, val) =
+                            crate::log::visible_logs::get_logs_header_pair(self.context_id);
+                        self.send_http_response(
+                            403,
+                            vec![(key.as_ref(), val.as_ref())],
+                            Some(response.reason().unwrap().as_bytes()),
                         );
-                        request_process_failure(self, self);
-                        return;
-                    }
-                    Err(e) => {
-                        info!(
-                            self.context_id,
-                            "parsing response from 3scale failed: {:#?} with token: {}",
-                            e,
-                            token_id
-                        );
-                        request_process_failure(self, self);
-                        return;
+                    } else {
+                        self.send_http_response(
+                            403,
+                            vec![],
+                            Some(response.reason().unwrap().as_bytes()),
+                        )
                     }
                 }
-
-                info!(
-                    self.context_id,
-                    "data received and parsed from callout with token :{}", token_id
-                );
-            }
+                Ok(Authorization::Error(auth_error)) => {
+                    info!(
+                        self.context_id,
+                        "authorization error with code: {}",
+                        auth_error.code()
+                    );
+                    request_process_failure(self, self);
+                }
+                Err(e) => {
+                    info!(
+                        self.context_id,
+                        "parsing response from 3scale failed: {:#?} with token: {}", e, token_id
+                    );
+                    request_process_failure(self, self);
+                }
+            },
             None => {
                 info!(
                     self.context_id,
@@ -469,6 +490,18 @@ impl Context for CacheFilter {
                 );
                 request_process_failure(self, self);
             }
+        }
+        if let Err(e) = free_callout_lock(self.root_id, self.context_id, &prev_cache_key) {
+            warn!(
+                self.context_id,
+                "failed to free callout-lock after auth response: {}", e
+            );
+        }
+        if let Err(e) = resume_callout_waiters(self.root_id, self.context_id, &prev_cache_key) {
+            warn!(
+                self.context_id,
+                "failed to resume callout-waiters after auth response: {}", e
+            );
         }
     }
 }
