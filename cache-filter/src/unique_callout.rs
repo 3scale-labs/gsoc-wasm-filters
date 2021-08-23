@@ -5,6 +5,16 @@ use proxy_wasm::{
 };
 use threescale::proxy::CacheKey;
 
+// This struct is serialized and stored in the shared data for callout-lock winner
+// to know which thread to wake up and to let waiters know which http context to resume processing.
+#[derive(Deserialize, Serialize, Clone)]
+pub struct CalloutWaiter {
+    /// MQ id of the thread waiting for callout response.
+    pub queue_id: u32,
+    /// Id of http context waiting for callout response.
+    pub http_context_id: u32,
+}
+
 /** TD;LR on how lock is acquired by exploiting host implementation:
 * cache is essentially a hashmap that maps key to a pair of (value, cas).
 * set_shared_data(key, value, cas)'s psuedo-code is as follows:
