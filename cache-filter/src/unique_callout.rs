@@ -239,6 +239,12 @@ pub fn add_to_callout_waitlist(context: &CacheFilter) -> Result<(), UniqueCallou
                         if let Err(Status::CasMismatch) =
                             set_shared_data(&waiters_key, Some(&serialized_cw), Some(cas))
                         {
+                            debug!(
+                                context.context_id,
+                                "thread({}): CAS mismatch while add callout-waiter({})",
+                                context.root_id,
+                                waiters_key
+                            );
                             continue;
                         }
                         break;
@@ -271,6 +277,12 @@ pub fn add_to_callout_waitlist(context: &CacheFilter) -> Result<(), UniqueCallou
                 if let Err(Status::CasMismatch) =
                     set_shared_data(&waiters_key, Some(&serialized_cw), Some(cas))
                 {
+                    debug!(
+                        context.context_id,
+                        "thread({}): CAS mismatch while adding the first callout-waiter({})",
+                        context.root_id,
+                        waiters_key
+                    );
                     continue;
                 }
                 break;
@@ -328,8 +340,9 @@ pub fn resume_callout_waiters(
         },
         Ok((None, _)) => {
             // This can happen either someother thread freed waiting contexts or
-            // there was only 1 request for this specific application.
-            debug!(
+            // there was only 1 request for this specific application. If this happens
+            // check implementation of acquiring and freeing lock as it's not supposed to happen.
+            warn!(
                 context_id,
                 "thread({}): found no callout-waiters ({})", root_id, waiters_key
             );

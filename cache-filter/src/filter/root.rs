@@ -141,6 +141,7 @@ impl RootContext for CacheFilterRoot {
                                     self.context_id,
                                     "failed to map user_key to app_id cache key pattern: {:?}", e
                                 );
+                                waiters.remove(&context_to_resume);
                                 return;
                             }
                         }
@@ -167,6 +168,7 @@ impl RootContext for CacheFilterRoot {
                             "failed to fetch application from cache: {:?}", e
                         ),
                     }
+                    waiters.remove(&context_to_resume);
                 })
             }
             Ok(None) => warn!(
