@@ -113,6 +113,10 @@ impl RootContext for CacheFilterRoot {
                         return;
                     }
                 };
+                let context_to_resume: u32 = match message {
+                    WaiterAction::HandleCacheHit(ctxt_id) => ctxt_id,
+                    WaiterAction::HandleFailure(ctxt_id) => ctxt_id,
+                };
 
                 WAITING_CONTEXTS.with(|refcell| {
                     let mut waiters = refcell.borrow_mut();
