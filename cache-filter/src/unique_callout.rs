@@ -307,7 +307,7 @@ pub fn add_to_callout_waitlist(context: &CacheFilter) -> Result<(), UniqueCallou
     Ok(())
 }
 
-pub fn resume_callout_waiters(
+pub fn send_action_to_waiters(
     root_id: u32,
     context_id: u32,
     cache_key: &CacheKey,
