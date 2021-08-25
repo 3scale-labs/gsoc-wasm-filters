@@ -41,6 +41,15 @@ pub struct CalloutWaiter {
     pub http_context_id: u32,
 }
 
+// This enum is passed to thread-specific MQs to let waiters know how to resume processing.
+#[derive(Deserialize, Serialize, Clone)]
+pub enum WaiterAction {
+    /// Follow the cache hit path with context_id used as inner value.
+    HandleCacheHit(u32),
+    /// Follow in request failure path with context_id used as inner value.
+    HandleFailure(u32),
+}
+
 /** TD;LR on how lock is acquired by exploiting host implementation:
 * cache is essentially a hashmap that maps key to a pair of (value, cas).
 * set_shared_data(key, value, cas)'s psuedo-code is as follows:
