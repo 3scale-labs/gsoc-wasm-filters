@@ -1,7 +1,7 @@
 use crate::configuration::FilterConfig;
 use crate::filter::http::CacheFilter;
 use crate::rand::thread_rng::{thread_rng_init_fallible, ThreadRng};
-use crate::unique_callout::WAITING_CONTEXTS;
+use crate::unique_callout::{WaiterAction, WAITING_CONTEXTS};
 use crate::utils::request_process_failure;
 use crate::{debug, info, warn};
 use proxy_wasm::{
@@ -103,13 +103,12 @@ impl RootContext for CacheFilterRoot {
         );
         match self.dequeue_shared_queue(queue_id) {
             Ok(Some(bytes)) => {
-                let ctxt_str = std::str::from_utf8(&bytes).unwrap();
-                let context_to_resume: u32 = match ctxt_str.parse() {
-                    Ok(ctxt_id) => ctxt_id,
+                let message = match bincode::deserialize::<WaiterAction>(&bytes) {
+                    Ok(res) => res,
                     Err(e) => {
                         warn!(
                             self.context_id,
-                            "failed to parse message({}) from MQ into ctxt id: {}", ctxt_str, e
+                            "thread({}): unrecoverable err: deserializing failure: {}", self.id, e
                         );
                         return;
                     }
