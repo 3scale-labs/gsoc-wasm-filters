@@ -311,6 +311,7 @@ pub fn send_action_to_waiters(
     root_id: u32,
     context_id: u32,
     cache_key: &CacheKey,
+    mut waiter_action: WaiterAction,
 ) -> Result<(), UniqueCalloutError> {
     let waiters_key = format!("CW_{}", cache_key.as_string());
     info!(
@@ -322,10 +323,24 @@ pub fn send_action_to_waiters(
         Ok((Some(bytes), _)) => match bincode::deserialize::<Vec<CalloutWaiter>>(&bytes) {
             Ok(callout_waiters) => {
                 for callout_waiter in callout_waiters {
-                    let ctxt_str = callout_waiter.http_context_id.to_string();
-                    if let Err(e) =
-                        enqueue_shared_queue(callout_waiter.queue_id, Some(ctxt_str.as_bytes()))
-                    {
+                    match waiter_action {
+                        WaiterAction::HandleFailure(ref mut ctxt_id) => {
+                            *ctxt_id = callout_waiter.http_context_id
+                        }
+                        WaiterAction::HandleCacheHit(ref mut ctxt_id) => {
+                            *ctxt_id = callout_waiter.http_context_id
+                        }
+                    }
+                    let message = match bincode::serialize::<WaiterAction>(&waiter_action) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            return Err(UniqueCalloutError::SerializeFail {
+                                what: "WaiterAction",
+                                reason: *e,
+                            })
+                        }
+                    };
+                    if let Err(e) = enqueue_shared_queue(callout_waiter.queue_id, Some(&message)) {
                         // There is nothing we can do to signal other threads now and should just
                         // allow them to timeout and maybe add another mechanism for memory clearance
                         warn!(
