@@ -448,7 +448,7 @@ impl Context for CacheFilter {
         // Depending on how response is handled here, waiters should resume accordingly.
         // Note: Inner value of this enum is changed to context_id to resume in send_action_to_waiters().
         let mut waiter_action = WaiterAction::HandleCacheHit(0);
-        
+
         match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                 Ok(Authorization::Status(response)) => {
