@@ -1,7 +1,7 @@
 use crate::configuration::FilterConfig;
 use crate::filter::http::CacheFilter;
 use crate::rand::thread_rng::{thread_rng_init_fallible, ThreadRng};
-use crate::unique_callout::WAITING_CONTEXTS;
+use crate::unique_callout::{WaiterAction, WAITING_CONTEXTS};
 use crate::utils::request_process_failure;
 use crate::{debug, info, warn};
 use proxy_wasm::{
@@ -106,16 +106,19 @@ impl RootContext for CacheFilterRoot {
         );
         match self.dequeue_shared_queue(queue_id) {
             Ok(Some(bytes)) => {
-                let ctxt_str = std::str::from_utf8(&bytes).unwrap();
-                let context_to_resume: u32 = match ctxt_str.parse() {
-                    Ok(ctxt_id) => ctxt_id,
+                let message = match bincode::deserialize::<WaiterAction>(&bytes) {
+                    Ok(res) => res,
                     Err(e) => {
                         warn!(
                             self.context_id,
-                            "failed to parse message({}) from MQ into ctxt id: {}", ctxt_str, e
+                            "thread({}): unrecoverable err: deserializing failure: {}", self.id, e
                         );
                         return;
                     }
+                };
+                let context_to_resume: u32 = match message {
+                    WaiterAction::HandleCacheHit(ctxt_id) => ctxt_id,
+                    WaiterAction::HandleFailure(ctxt_id) => ctxt_id,
                 };
 
                 WAITING_CONTEXTS.with(|refcell| {
@@ -124,12 +127,33 @@ impl RootContext for CacheFilterRoot {
                     if context.is_none() {
                         warn!(
                             self.context_id,
-                            "http context({}) not found while resuming after callout response",
+                            "thread({}): unrecoverable err: http context({}) not found while resuming after callout response",
+                            self.id,
                             context_to_resume
                         );
                         return;
                     }
+
                     let context = context.unwrap();
+
+                    if let Err(e) = set_effective_context(context_to_resume) {
+                        // NOTE: Ideally this should *not* happen.
+                        warn!(
+                            context_to_resume,
+                            "thread({}): unrecoverable err: failed to set effective context in the host: {:?}", self.id, e
+                        );
+                        waiters.remove(&context_to_resume);
+                        return;
+                    }
+
+                    if let WaiterAction::HandleFailure(_) = message {
+                        // This can happen either there was no response from 3scale (e.g. timeout) or handling
+                        // response failed (e.g. parsing).
+                        info!(context_to_resume, "thread({}): handling auth callout failure for this waiting context", self.id);
+                        request_process_failure(context, context);
+                        waiters.remove(&context_to_resume);
+                        return;
+                    }
 
                     // Waiting contexts can have cache_key with user_key pattern but cache stores
                     // application only with app_id pattern so change if required before accessing it.
@@ -139,7 +163,8 @@ impl RootContext for CacheFilterRoot {
                                 context.cache_key.set_app_id(&AppIdentifier::from(app_id))
                             }
                             Err(e) => {
-                                // This is unlikely since mapping is defined when auth response is handled.
+                                // This is unlikely since mapping is defined when auth response is handled properly.
+                                // Or someone made a flow error above, allowing this instruction to execute.
                                 warn!(
                                     self.context_id,
                                     "failed to map user_key to app_id cache key pattern: {:?}", e
@@ -149,15 +174,10 @@ impl RootContext for CacheFilterRoot {
                             }
                         }
                     }
+
                     match get_application_from_cache(&context.cache_key) {
                         Ok((mut app, cas)) => {
-                            if let Err(e) = set_effective_context(context_to_resume) {
-                                // NOTE: Ideally this should not happen.
-                                warn!(
-                                    context_to_resume,
-                                    "failed to set effective context in the host: {:?}", e
-                                );
-                            } else if let Err(e) = context.handle_cache_hit(&mut app, cas) {
+                            if let Err(e) = context.handle_cache_hit(&mut app, cas) {
                                 debug!(context_to_resume, "handle_cache_hit fail: {}", e);
                                 // if there is error from handle_cache_hit, request flow is not changed
                                 // and should be done by the code handling the returned error.
@@ -176,11 +196,11 @@ impl RootContext for CacheFilterRoot {
             }
             Ok(None) => warn!(
                 self.context_id,
-                "on_queue called but found nothing in the MQ"
+                "thread({}): on_queue called but found nothing in the MQ", self.id
             ),
             Err(e) => warn!(
                 self.context_id,
-                "failed to dequeue from thread-specific MQ: {:?}", e
+                "thread({}): failed to dequeue from thread-specific MQ: {:?}", self.id, e
             ),
         }
     }

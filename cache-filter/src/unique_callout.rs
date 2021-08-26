@@ -41,6 +41,15 @@ pub struct CalloutWaiter {
     pub http_context_id: u32,
 }
 
+// This enum is passed to thread-specific MQs to let waiters know how to resume processing.
+#[derive(Deserialize, Serialize, Clone)]
+pub enum WaiterAction {
+    /// Follow the cache hit path with context_id used as inner value.
+    HandleCacheHit(u32),
+    /// Follow in request failure path with context_id used as inner value.
+    HandleFailure(u32),
+}
+
 /** TD;LR on how lock is acquired by exploiting host implementation:
 * cache is essentially a hashmap that maps key to a pair of (value, cas).
 * set_shared_data(key, value, cas)'s psuedo-code is as follows:
@@ -298,10 +307,11 @@ pub fn add_to_callout_waitlist(context: &CacheFilter) -> Result<(), UniqueCallou
     Ok(())
 }
 
-pub fn resume_callout_waiters(
+pub fn send_action_to_waiters(
     root_id: u32,
     context_id: u32,
     cache_key: &CacheKey,
+    mut waiter_action: WaiterAction,
 ) -> Result<(), UniqueCalloutError> {
     let waiters_key = format!("CW_{}", cache_key.as_string());
     info!(
@@ -313,10 +323,24 @@ pub fn resume_callout_waiters(
         Ok((Some(bytes), _)) => match bincode::deserialize::<Vec<CalloutWaiter>>(&bytes) {
             Ok(callout_waiters) => {
                 for callout_waiter in callout_waiters {
-                    let ctxt_str = callout_waiter.http_context_id.to_string();
-                    if let Err(e) =
-                        enqueue_shared_queue(callout_waiter.queue_id, Some(ctxt_str.as_bytes()))
-                    {
+                    match waiter_action {
+                        WaiterAction::HandleFailure(ref mut ctxt_id) => {
+                            *ctxt_id = callout_waiter.http_context_id
+                        }
+                        WaiterAction::HandleCacheHit(ref mut ctxt_id) => {
+                            *ctxt_id = callout_waiter.http_context_id
+                        }
+                    }
+                    let message = match bincode::serialize::<WaiterAction>(&waiter_action) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            return Err(UniqueCalloutError::SerializeFail {
+                                what: "WaiterAction",
+                                reason: *e,
+                            })
+                        }
+                    };
+                    if let Err(e) = enqueue_shared_queue(callout_waiter.queue_id, Some(&message)) {
                         // There is nothing we can do to signal other threads now and should just
                         // allow them to timeout and maybe add another mechanism for memory clearance
                         warn!(
