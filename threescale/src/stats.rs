@@ -20,7 +20,7 @@ pub struct ThreescaleStats {
     // Total number of unauthorized responses for authorize requests from cache filter.
     pub unauthorized: ThreescaleStat,
     // TODO: Add stats for cache filter authorize timeouts.
-    // Total number of timeouts received for authorize requests (currently only singleton considered) 
+    // Total number of timeouts received for authorize requests (currently only singleton considered)
     pub authorize_timeouts: ThreescaleStat,
     // Total number of error codes due to auth metadata info missing.
     pub auth_metadata_errors: ThreescaleStat,
@@ -40,7 +40,7 @@ pub fn decrement_stat(metric: &ThreescaleStat) {
     }
 }
 
-// Initialize all the stats. With the current implementation of rust-sdk, it's safe to 
+// Initialize all the stats. With the current implementation of rust-sdk, it's safe to
 // directly unwrap define_metric().
 pub fn initialize_stats() -> ThreescaleStats {
     ThreescaleStats {
