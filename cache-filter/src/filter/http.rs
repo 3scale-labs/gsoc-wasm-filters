@@ -2,7 +2,8 @@ use crate::{
     configuration::FilterConfig,
     debug, info,
     unique_callout::{
-        add_to_callout_waitlist, free_callout_lock, resume_callout_waiters, set_callout_lock,
+        add_to_callout_waitlist, free_callout_lock, send_action_to_waiters, set_callout_lock,
+        WaiterAction,
     },
     utils::{do_auth_call, in_request_failure, request_process_failure},
     warn,
@@ -443,15 +444,22 @@ impl Context for CacheFilter {
         // Freeing of callout-lock requires the cache_key used to set the lock but cache_key
         // attached to 'self' can change inside handle_auth_response (user_key to app_id).
         let prev_cache_key = self.cache_key.clone();
+
+        // Depending on how response is handled here, waiters should resume accordingly.
+        // Note: Inner value of this enum is changed to context_id to resume in send_action_to_waiters().
+        let mut waiter_action = WaiterAction::HandleCacheHit(0);
+
         match self.get_http_call_response_body(0, body_size) {
             Some(bytes) => match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
                 Ok(Authorization::Status(response)) => {
                     if response.is_authorized() || response.usage_reports().is_some() {
                         if let Err(e) = self.handle_auth_response(&response) {
                             warn!(self.context_id, "handling auth response failed: {:?}", e);
+                            waiter_action = WaiterAction::HandleFailure(0);
                             request_process_failure(self, self)
                         }
                     } else if cfg!(feature = "visible_logs") {
+                        waiter_action = WaiterAction::HandleFailure(0);
                         let (key, val) =
                             crate::log::visible_logs::get_logs_header_pair(self.context_id);
                         self.send_http_response(
@@ -460,6 +468,7 @@ impl Context for CacheFilter {
                             Some(response.reason().unwrap().as_bytes()),
                         );
                     } else {
+                        waiter_action = WaiterAction::HandleFailure(0);
                         self.send_http_response(
                             403,
                             vec![],
@@ -473,6 +482,7 @@ impl Context for CacheFilter {
                         "authorization error with code: {}",
                         auth_error.code()
                     );
+                    waiter_action = WaiterAction::HandleFailure(0);
                     request_process_failure(self, self);
                 }
                 Err(e) => {
@@ -480,6 +490,7 @@ impl Context for CacheFilter {
                         self.context_id,
                         "parsing response from 3scale failed: {:#?} with token: {}", e, token_id
                     );
+                    waiter_action = WaiterAction::HandleFailure(0);
                     request_process_failure(self, self);
                 }
             },
@@ -488,6 +499,7 @@ impl Context for CacheFilter {
                     self.context_id,
                     "Found nothing in the response with token: {}", token_id
                 );
+                waiter_action = WaiterAction::HandleFailure(0);
                 request_process_failure(self, self);
             }
         }
@@ -497,7 +509,12 @@ impl Context for CacheFilter {
                 "failed to free callout-lock after auth response: {}", e
             );
         }
-        if let Err(e) = resume_callout_waiters(self.root_id, self.context_id, &prev_cache_key) {
+        if let Err(e) = send_action_to_waiters(
+            self.root_id,
+            self.context_id,
+            &prev_cache_key,
+            waiter_action,
+        ) {
             warn!(
                 self.context_id,
                 "failed to resume callout-waiters after auth response: {}", e
