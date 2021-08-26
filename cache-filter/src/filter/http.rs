@@ -18,6 +18,7 @@ use threescale::{
         get_app_id_from_cache, get_application_from_cache, set_app_id_to_cache, CacheError,
         CacheKey,
     },
+    stats::*,
     structs::*,
     upstream::*,
     utils::*,
@@ -84,6 +85,7 @@ pub struct CacheFilter {
     pub cache_key: CacheKey,
     // required for cache miss case
     pub req_data: ThreescaleData,
+    pub stats: ThreescaleStats,
 }
 
 impl HttpContext for CacheFilter {
@@ -92,7 +94,7 @@ impl HttpContext for CacheFilter {
             Ok(data) => data,
             Err(e) => {
                 debug!(self.context_id, "fetching request data failed: {}", e);
-
+                increment_stat(&self.stats.auth_metadata_errors);
                 // Send back local response for not providing relevant request data
                 if cfg!(feature = "visible_logs") {
                     let (key, val) =
@@ -130,7 +132,7 @@ impl HttpContext for CacheFilter {
         match get_application_from_cache(&self.cache_key) {
             Ok((mut app, cas)) => {
                 info!(self.context_id, "cache hit");
-
+                increment_stat(&self.stats.cache_hits);
                 match self.handle_cache_hit(&mut app, cas) {
                     Ok(()) => Action::Continue,
                     Err(e) => {
@@ -144,6 +146,7 @@ impl HttpContext for CacheFilter {
                 // TODO: Avoid multiple calls for same application
                 // saving request data to use when there is response from 3scale
                 // fetching new application state using authorize endpoint
+                increment_stat(&self.stats.cache_misses);
                 do_auth_call(self, self, &request_data)
             }
         }
@@ -195,6 +198,9 @@ impl CacheFilter {
                 Ok(()) => {
                     // App is not rate-limited and updated in cache.
                     info!(self.context_id, "request is allowed to pass the filter");
+                    if app_cas == 0 {
+                        increment_stat(&self.stats.cached_apps)
+                    }
                     if !self.report_to_singleton(queue_id, &current_time) {
                         // TODO: Handle MQ failure here
                         // Update local cache
@@ -406,6 +412,7 @@ impl Context for CacheFilter {
                                 Some(response.reason().unwrap().as_bytes()),
                             );
                         } else {
+                            increment_stat(&self.stats.unauthorized);
                             self.send_http_response(
                                 403,
                                 vec![],
