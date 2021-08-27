@@ -20,6 +20,25 @@ To ensure the accuracy of the results, every benchmark is performed twice and th
 
 > Note: From this point onwards in this documentation cache is refered to the current version without the unique callouts feature.
 
+## Specifications of the infrastructure used
+
+| Instance | Machine type | Memory  |
+| ------- |:-------------:| -----:|
+| Proxy | m5a.2xlarge | 32G |
+| Client | c5a.xlarge | 16G |
+| Service | c5a.xlarge | 16G |
+
+## Software and tooling
+
+| Software | Version | 
+| ------- |:-------------: |
+| Envoyproxy | v1.18.2 |
+| threescale-wasm-auth | 9ad206e4ce20be1c4b75d264a867b9e11acfc4af | 
+| gsoc-wasm-filters/unique-callouts-mq | 7b14ac02022a15804398ecb38e1028cb58ab8409 |
+| hey | 0.1.2-2 |
+
+* All host machines running Ubuntu 21.04 (GNU/Linux 5.11.0-1014-aws x86_64)
+
 ## Regular traffic profile.
 
 ### Benchmark 1
