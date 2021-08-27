@@ -241,100 +241,79 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutErro
 // NOTE: Right now, there is no option of deleting the pair instead only the value can be erased,
 // and it requires changes in the ABI so change this because it will lead to better memory usage.
 // Callout-lock is freed by setting null value in the cache for the request key.
-pub fn free_callout_lock(
-    root_id: u32,
-    context_id: u32,
-    cache_key: &CacheKey,
-) -> Result<(), UniqueCalloutError> {
-    let callout_key = format!("CL_{}", cache_key.as_string());
-    info!(
-        context_id,
-        "thread ({}): trying to free callout-lock ({})", root_id, callout_key
-    );
-
-    if let Err(Status::NotFound) = get_shared_data(&callout_key) {
-        warn!(
-            context_id,
-            "thread ({}): trying to free non-existing callout-lock ({})", root_id, callout_key
-        );
-        return Err(UniqueCalloutError::ProxyFailure(Status::NotFound));
-    }
-
-    if let Err(e) = set_shared_data(&callout_key, None, None) {
-        warn!(
-            context_id,
-            "thread ({}): failed to delete the callout-lock ({}) from shared data: {:?}",
-            root_id,
-            callout_key,
-            e
-        );
-        return Err(UniqueCalloutError::ProxyFailure(e));
-    }
-    Ok(())
-}
-
-pub fn send_action_to_waiters(
+pub fn free_callout_lock_and_notify_waiters(
     root_id: u32,
     context_id: u32,
     cache_key: &CacheKey,
     mut waiter_action: WaiterAction,
 ) -> Result<(), UniqueCalloutError> {
-    let waiters_key = format!("CW_{}", cache_key.as_string());
+    let callout_lock_key = format!("CL_{}", cache_key.as_string());
     info!(
         context_id,
-        "thread({}): trying to resume callout-waiters ({})", root_id, waiters_key
+        "thread ({}): trying to free callout-lock and notify waiters({})",
+        root_id,
+        callout_lock_key
     );
 
-    match get_shared_data(&waiters_key) {
-        Ok((Some(bytes), _)) => match bincode::deserialize::<Vec<CalloutWaiter>>(&bytes) {
-            Ok(callout_waiters) => {
-                for callout_waiter in callout_waiters {
-                    match waiter_action {
-                        WaiterAction::HandleFailure(ref mut ctxt_id) => {
-                            *ctxt_id = callout_waiter.http_context_id
-                        }
-                        WaiterAction::HandleCacheHit(ref mut ctxt_id) => {
-                            *ctxt_id = callout_waiter.http_context_id
-                        }
+    match get_shared_data(&callout_lock_key) {
+        Ok((Some(bytes), _)) => {
+            let callout_lock_value = match bincode::deserialize::<CalloutLockValue>(&bytes) {
+                Ok(res) => res,
+                Err(e) => {
+                    return Err(UniqueCalloutError::DeserializeFail {
+                        what: "CalloutLockValue",
+                        reason: *e,
+                    })
+                }
+            };
+            for callout_waiter in callout_lock_value.waiters {
+                match waiter_action {
+                    WaiterAction::HandleFailure(ref mut ctxt_id) => {
+                        *ctxt_id = callout_waiter.http_context_id
                     }
-                    let message = match bincode::serialize::<WaiterAction>(&waiter_action) {
-                        Ok(res) => res,
-                        Err(e) => {
-                            return Err(UniqueCalloutError::SerializeFail {
-                                what: "WaiterAction",
-                                reason: *e,
-                            })
-                        }
-                    };
-                    if let Err(e) = enqueue_shared_queue(callout_waiter.queue_id, Some(&message)) {
-                        // There is nothing we can do to signal other threads now and should just
-                        // allow them to timeout and maybe add another mechanism for memory clearance
-                        warn!(
-                            context_id,
-                            "thread({}): enqueue failure for queue({}): {:?}",
-                            root_id,
-                            callout_waiter.queue_id,
-                            e
-                        );
+                    WaiterAction::HandleCacheHit(ref mut ctxt_id) => {
+                        *ctxt_id = callout_waiter.http_context_id
                     }
                 }
-                // Note: safe for current SDK implementation.
-                set_shared_data(&waiters_key, None, None).unwrap();
+                let message = match bincode::serialize::<WaiterAction>(&waiter_action) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        warn!(
+                            context_id,
+                            "failed to serialize WaiterAction {:?}: {}", waiter_action, e
+                        );
+                        continue; // One serialize fail should not prevent others to try.
+                    }
+                };
+                if let Err(e) = enqueue_shared_queue(callout_waiter.queue_id, Some(&message)) {
+                    // There is nothing we can do to signal other threads now and should just
+                    // allow them to timeout and maybe add another mechanism for memory clearance
+                    warn!(
+                        context_id,
+                        "thread({}): enqueue failure for queue({}): {:?}",
+                        root_id,
+                        callout_waiter.queue_id,
+                        e
+                    );
+                    warn!(
+                        context_id,
+                        "failed to enqueue message to notify waiter({:?})", callout_waiter
+                    );
+                    continue; // One enqueue fail should not prevent others to try.
+                }
             }
-            Err(e) => {
-                return Err(UniqueCalloutError::DeserializeFail {
-                    what: "Vec<CalloutWaiter>",
-                    reason: *e,
-                });
-            }
-        },
+            // Note: safe for current SDK implementation.
+            set_shared_data(&callout_lock_key, None, None).unwrap();
+        }
         Ok((None, _)) => {
-            // This can happen either someother thread freed waiting contexts or
-            // there was only 1 request for this specific application. If this happens
+            // This can happen either someother thread freed waiting contexts or there was only
+            // 1 request for this specific application. If this happens for the former
             // check implementation of acquiring and freeing lock as it's not supposed to happen.
             warn!(
                 context_id,
-                "thread({}): found no callout-waiters ({})", root_id, waiters_key
+                "thread ({}): trying to free non-existing callout-lock ({})",
+                root_id,
+                callout_lock_key
             );
         }
         Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
