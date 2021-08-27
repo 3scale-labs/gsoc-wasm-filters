@@ -39,6 +39,8 @@ To ensure the accuracy of the results, every benchmark is performed twice and th
 
 * All host machines running Ubuntu 21.04 (GNU/Linux 5.11.0-1014-aws x86_64)
 
+> Note: Envoy configuration used for the latency benchmarks is used here. Refer the [envoy-cache.yaml](../bench-latency/configs/envoy-cache.yaml) 
+
 ## Regular traffic profile.
 
 ### Benchmark 1
