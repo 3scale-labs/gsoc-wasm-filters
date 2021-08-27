@@ -124,6 +124,7 @@ impl HttpContext for CacheFilter {
                         "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
                     // TODO: avoid multiple calls for identical requests
+                    increment_stat(&self.stats.user_key_app_id_misses);
                     return do_auth_call(self, self, &request_data);
                 }
             }
