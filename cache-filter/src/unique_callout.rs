@@ -59,6 +59,16 @@ pub enum WaiterAction {
     HandleFailure(u32),
 }
 
+// This enum is used to give out status for an http context trying to get callout-lock.
+pub enum SetCalloutLockStatus {
+    // Callout-lock is acquired by the current context.
+    LockAcquired,
+    // Current context is added to the callout-waitlist.
+    AddedToWaitlist,
+    // Before context could be added to waitlist, callout response came first.
+    ResponseCameFirst,
+}
+
 /** TD;LR on how lock is acquired by exploiting host implementation:
 * cache is essentially a hashmap that maps key to a pair of (value, cas).
 * set_shared_data(key, value, cas)'s psuedo-code is as follows:
