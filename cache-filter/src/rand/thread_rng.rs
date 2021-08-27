@@ -69,6 +69,7 @@ impl ThreadRng {
 
     // Use `with` to perform multiple calls in succession to the pseudo RNG.
     #[inline]
+    #[allow(dead_code)]
     pub fn with<R, F: FnOnce(&mut Prng<DefaultPRNG>) -> R>(&self, f: F) -> R {
         imp::rng_with(f)
     }
