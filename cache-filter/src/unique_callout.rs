@@ -86,6 +86,15 @@ pub enum WaiterAction {
 * Please read host implementation (shared_data.cc/h) and Rust SDK/hostcalls.rs for better understanding.
 **/
 
+/// This struct is serialized and stored as the value of a callout lock.
+#[derive(Serialize, Deserialize)]
+struct CalloutLockValue {
+    // Id of the thread who owns the lock.
+    pub owned_by: u32,
+    // List of contexts that are waiting for lock to be freed.
+    pub waiters: Vec<CalloutWaiter>,
+}
+
 // Callout lock is acquired by placing a key-value pair inside shared data.
 pub fn set_callout_lock(
     root_id: u32,
