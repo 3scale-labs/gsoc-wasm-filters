@@ -103,7 +103,7 @@ pub enum SetCalloutLockStatus {
 
 // Callout lock is acquired by placing a key-value pair inside shared data.
 // Return Ok(true) when lock is acquired and Ok(false) when added to waitlist.
-pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutError> {
+pub fn set_callout_lock(context: &CacheFilter) -> Result<SetCalloutLockStatus, UniqueCalloutError> {
     let callout_lock_key = format!("CL_{}", context.cache_key.as_string());
     let context_id = context.context_id;
     let root_id = context.root_id;
@@ -137,6 +137,7 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutErro
         }
     };
 
+    let mut seen_lock_owner: Option<u32> = None;
     loop {
         // check if lock is already acquired or not
         match get_shared_data(&callout_lock_key) {
@@ -147,14 +148,14 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutErro
                     root_id,
                     callout_lock_key
                 );
-                // Note: CAS is not 'None' here                                   ∨∨∨∨∨∨
+                // Note: CAS is not 'None' here                                        ∨∨∨∨∨∨
                 match set_shared_data(&callout_lock_key, Some(&lock_value_serialized), Some(1)) {
                     Ok(()) => {
                         info!(
                             context_id,
                             "thread ({}): callout-lock ({}) acquired", root_id, callout_lock_key
                         );
-                        return Ok(true);
+                        return Ok(SetCalloutLockStatus::LockAcquired);
                     }
                     Err(Status::CasMismatch) => {
                         info!(
@@ -163,6 +164,7 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutErro
                             root_id,
                             callout_lock_key
                         );
+                        // Now try to add it to waitlist instead.
                         continue;
                     }
                     Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
@@ -201,6 +203,7 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutErro
                     Some(&serialized_updated_lock_value),
                     Some(cas),
                 ) {
+                    seen_lock_owner = Some(serialized_updated_lock_value.owned_by);
                     continue;
                 }
                 info!(
@@ -212,9 +215,13 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutErro
                         .borrow_mut()
                         .insert(context.context_id, context.clone())
                 });
-                return Ok(false);
+                return Ok(SetCalloutLockStatus::AddedToWaitlist);
             }
             Ok((None, Some(cas))) => {
+                if seen_lock_owner.is_some() {
+                    info!(context_id, "thread({}): callout({}) response came before context was added to waitlist", root_id, callout_lock_key);
+                    return Ok(SetCalloutLockStatus::ResponseCameFirst);
+                }
                 info!(
                     context_id,
                     "thread ({}): callout-lock ({}) was already free and trying to acquire again",
@@ -229,7 +236,7 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutErro
                             root_id,
                             callout_lock_key
                         );
-                        return Ok(true);
+                        return Ok(SetCalloutLockStatus::LockAcquired);
                     }
                     Err(Status::CasMismatch) => {
                         info!(
@@ -238,6 +245,7 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutErro
                             root_id,
                             callout_lock_key
                         );
+                        // Now try to add context to waitlist.
                         continue;
                     }
                     Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
