@@ -61,12 +61,8 @@ pub enum WaiterAction {
 *   else insert_new_entry_into_the_hashmap
 *
 * A lock is acquired by a thread when it successfully adds an entry in the cache of the format:
-*              ("CL_{CacheKey}", ({THREAD_ID/ROOT_CONTEXT_ID}, CAS))
+*              ("CL_{CacheKey}", ({SERALIZED_CALLOUT_LOCK_VALUE}, CAS))
 
-* Rest of the threads that don't the lock will have their ids stored in the cache with format:
-*              ("CW_{CacheKey}", (serialized_vector_of_CalloutWaiter_struct, CAS))
-
-* Here, CL - Callout-Lock, CW - Callout-Waiters
 
 * If you look at Rust SDK spec, when a cache entry is not present, you get (None, None) as result.
 * Now imagine a scenario, when two threads (T1 & T2) check for the same lock in the cache and find no lock.
