@@ -203,7 +203,7 @@ pub fn set_callout_lock(context: &CacheFilter) -> Result<SetCalloutLockStatus, U
                     Some(&serialized_updated_lock_value),
                     Some(cas),
                 ) {
-                    seen_lock_owner = Some(serialized_updated_lock_value.owned_by);
+                    seen_lock_owner = Some(stored_lock_value.owned_by);
                     continue;
                 }
                 info!(
