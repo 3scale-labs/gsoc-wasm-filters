@@ -2,8 +2,7 @@ use crate::{
     configuration::FilterConfig,
     debug, info,
     unique_callout::{
-        add_to_callout_waitlist, free_callout_lock, send_action_to_waiters, set_callout_lock,
-        WaiterAction,
+        free_callout_lock_and_notify_waiters, set_callout_lock, SetCalloutLockStatus, WaiterAction,
     },
     utils::{do_auth_call, in_request_failure, request_process_failure},
     warn,
@@ -127,30 +126,32 @@ impl HttpContext for CacheFilter {
                         self.context_id,
                         "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
-                    return match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
-                        Ok(true) => do_auth_call(self, self, &request_data),
-                        Ok(false) => {
-                            if let Err(e) = add_to_callout_waitlist(self) {
-                                warn!(
-                                    self.context_id,
-                                    "failed to add current context to callout-waitlist: {}", e
-                                );
-                                in_request_failure(self, self);
+                    match set_callout_lock(self) {
+                        Ok(SetCalloutLockStatus::LockAcquired) => {
+                            return do_auth_call(self, self, &request_data);
+                        }
+                        Ok(SetCalloutLockStatus::AddedToWaitlist) => return Action::Pause,
+                        Ok(SetCalloutLockStatus::ResponseCameFirst) => {
+                            match get_app_id_from_cache(user_key) {
+                                Ok(app_id) => {
+                                    request_data.app_id = AppIdentifier::from(app_id);
+                                    self.req_data.app_id = request_data.app_id.clone();
+                                    self.cache_key.set_app_id(&request_data.app_id);
+                                }
+                                Err(e) => {
+                                    debug!(self.context_id, "user_key->app_id mapping not found after callout response: {:?}", e);
+                                    return in_request_failure(self, self);
+                                }
                             }
-                            info!(
-                                self.context_id,
-                                "successfully added current context to callout-waitlist"
-                            );
-                            Action::Pause
                         }
                         Err(e) => {
                             warn!(
                                 self.context_id,
-                                "failed to set callout-lock for request(key: {}): {:?}",
+                                "failed to set callout-lock or add to waitlist for request(key: {}): {:?}",
                                 self.cache_key.as_string(),
                                 e
                             );
-                            in_request_failure(self, self)
+                            return in_request_failure(self, self);
                         }
                     };
                 }
@@ -158,34 +159,37 @@ impl HttpContext for CacheFilter {
         }
 
         match get_application_from_cache(&self.cache_key) {
-            Ok((mut app, cas)) => {
-                info!(self.context_id, "cache hit");
-
-                match self.handle_cache_hit(&mut app, cas) {
-                    Ok(()) => Action::Continue,
-                    Err(e) => {
-                        warn!(self.context_id, "cache hit flow failed: {}", e);
-                        in_request_failure(self, self)
-                    }
+            Ok((mut app, cas)) => match self.handle_cache_hit(&mut app, cas) {
+                Ok(()) => Action::Continue,
+                Err(e) => {
+                    warn!(self.context_id, "cache hit flow failed: {}", e);
+                    in_request_failure(self, self)
                 }
-            }
+            },
             Err(e) => {
                 info!(self.context_id, "cache miss: {}", e);
-                match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
-                    Ok(true) => do_auth_call(self, self, &request_data),
-                    Ok(false) => {
-                        if let Err(e) = add_to_callout_waitlist(self) {
-                            warn!(
-                                self.context_id,
-                                "failed to add current context to callout-waitlist: {}", e
-                            );
-                            return in_request_failure(self, self);
+                match set_callout_lock(self) {
+                    Ok(SetCalloutLockStatus::LockAcquired) => {
+                        do_auth_call(self, self, &request_data)
+                    }
+                    Ok(SetCalloutLockStatus::AddedToWaitlist) => Action::Pause,
+                    Ok(SetCalloutLockStatus::ResponseCameFirst) => {
+                        match get_application_from_cache(&self.cache_key) {
+                            Ok((mut app, cas)) => match self.handle_cache_hit(&mut app, cas) {
+                                Ok(()) => Action::Continue,
+                                Err(e) => {
+                                    debug!(
+                                        self.context_id,
+                                        "cache hit flow failed after callout response: {}", e
+                                    );
+                                    in_request_failure(self, self)
+                                }
+                            },
+                            Err(e) => {
+                                debug!(self.context_id, "failed to fetch app from shared data after callout response: {}", e);
+                                in_request_failure(self, self)
+                            }
                         }
-                        info!(
-                            self.context_id,
-                            "successfully added current context to callout-waitlist"
-                        );
-                        Action::Pause
                     }
                     Err(e) => {
                         warn!(
@@ -230,6 +234,7 @@ impl CacheFilter {
         app: &mut Application,
         mut app_cas: u32,
     ) -> Result<(), CacheHitError> {
+        info!(self.context_id, "cache hit");
         let queue_id = self
             .resolve_shared_queue(crate::VM_ID, QUEUE_NAME)
             .ok_or(CacheHitError::MQNotFound)?;
@@ -503,13 +508,7 @@ impl Context for CacheFilter {
                 request_process_failure(self, self);
             }
         }
-        if let Err(e) = free_callout_lock(self.root_id, self.context_id, &prev_cache_key) {
-            warn!(
-                self.context_id,
-                "failed to free callout-lock after auth response: {}", e
-            );
-        }
-        if let Err(e) = send_action_to_waiters(
+        if let Err(e) = free_callout_lock_and_notify_waiters(
             self.root_id,
             self.context_id,
             &prev_cache_key,
@@ -517,7 +516,7 @@ impl Context for CacheFilter {
         ) {
             warn!(
                 self.context_id,
-                "failed to resume callout-waiters after auth response: {}", e
+                "failed to free callout-lock after auth response: {}", e
             );
         }
     }
