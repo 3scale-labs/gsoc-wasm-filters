@@ -54,7 +54,7 @@ func (suite *CacheTestSuite) TestServiceManagementTimeout() {
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)
 	require.Nilf(suite.T(), unmarshalErr, "Error while unmarshaling: %v", unmarshalErr)
 
-	patterns := []string{".*cache miss.*", ".*dispatch successful.*", ".*received response.*", ".*Unexpected characters.*"}
+	patterns := []string{".*cache miss.*", ".*dispatch successful.*", ".*received response.*", ".*timeout.*"}
 	patternsMatched := SerialSearch(logs, patterns)
 	assert.Equal(suite.T(), true, patternsMatched, "All patterns are not matched! Logs: %v", logs)
 
