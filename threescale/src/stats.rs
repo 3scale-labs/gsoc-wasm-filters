@@ -24,8 +24,6 @@ pub struct ThreescaleStats {
     pub authorize_timeouts: ThreescaleStat,
     // Total number of error codes due to auth metadata info missing.
     pub auth_metadata_errors: ThreescaleStat,
-    // Total number of user_key->app_id cache misses
-    pub user_key_app_id_misses: ThreescaleStat,
 }
 
 // Helper method to increment a metric by 1.
@@ -73,14 +71,6 @@ pub fn initialize_stats() -> ThreescaleStats {
             )
             .unwrap(),
             "envoy.3scale.cache.auth_metadata_errors".to_string(),
-        ),
-        user_key_app_id_misses: ThreescaleStat(
-            define_metric(
-                MetricType::Counter,
-                "envoy.3scale.cache.userkey_appid_misses",
-            )
-            .unwrap(),
-            "envoy.3scale.cache.userkey_appid_misses".to_string(),
         ),
     }
 }
