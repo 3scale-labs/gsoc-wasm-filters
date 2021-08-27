@@ -1,7 +1,7 @@
 use crate::{
     configuration::FilterConfig,
     debug, info,
-    unique_callout::{free_callout_lock, send_action_to_waiters, set_callout_lock, WaiterAction},
+    unique_callout::{free_callout_lock_and_notify_waiters, set_callout_lock, WaiterAction},
     utils::{do_auth_call, in_request_failure, request_process_failure},
     warn,
 };
@@ -474,13 +474,7 @@ impl Context for CacheFilter {
                 request_process_failure(self, self);
             }
         }
-        if let Err(e) = free_callout_lock(self.root_id, self.context_id, &prev_cache_key) {
-            warn!(
-                self.context_id,
-                "failed to free callout-lock after auth response: {}", e
-            );
-        }
-        if let Err(e) = send_action_to_waiters(
+        if let Err(e) = free_callout_lock_and_notify_waiters(
             self.root_id,
             self.context_id,
             &prev_cache_key,
@@ -488,7 +482,7 @@ impl Context for CacheFilter {
         ) {
             warn!(
                 self.context_id,
-                "failed to resume callout-waiters after auth response: {}", e
+                "failed to free callout-lock after auth response: {}", e
             );
         }
     }
