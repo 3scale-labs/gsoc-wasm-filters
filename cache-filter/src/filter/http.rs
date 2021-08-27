@@ -132,13 +132,9 @@ impl HttpContext for CacheFilter {
         }
 
         match get_application_from_cache(&self.cache_key) {
-            Ok((mut app, cas)) => {
-                info!(self.context_id, "cache hit");
-                increment_stat(&self.stats.cache_hits);
-                match self.handle_cache_hit(&mut app, cas) {
-                    Ok(()) => Action::Continue,
-                    Err(e) => {
-                        warn!(self.context_id, "cache hit flow failed: {}", e);
+            Ok((mut app, cas)) => match self.handle_cache_hit(&mut app, cas) {
+                Ok(()) => Action::Continue,
+                Err(e) => {
                         in_request_failure(self, self)
                     }
                 }
@@ -183,6 +179,8 @@ impl CacheFilter {
         app: &mut Application,
         mut app_cas: u32,
     ) -> Result<(), CacheHitError> {
+        info!(self.context_id, "cache hit");
+        increment_stat(&self.stats.cache_hits);
         let queue_id = self
             .resolve_shared_queue(VM_ID, QUEUE_NAME)
             .ok_or(CacheHitError::MQNotFound)?;
