@@ -1,5 +1,5 @@
 use crate::filter::http::CacheFilter;
-use crate::{debug, info, warn};
+use crate::{info, warn};
 use proxy_wasm::{
     hostcalls::{enqueue_shared_queue, get_shared_data, resolve_shared_queue, set_shared_data},
     types::Status,
@@ -92,87 +92,148 @@ struct CalloutLockValue {
 }
 
 // Callout lock is acquired by placing a key-value pair inside shared data.
-pub fn set_callout_lock(
-    root_id: u32,
-    context_id: u32,
-    cache_key: &CacheKey,
-) -> Result<bool, Status> {
-    let callout_key = format!("CL_{}", cache_key.as_string());
-    let root_id_str = root_id.to_string();
-    let root_id_str_bytes = root_id_str.as_bytes();
+// Return Ok(true) when lock is acquired and Ok(false) when added to waitlist.
+pub fn set_callout_lock(context: &CacheFilter) -> Result<bool, UniqueCalloutError> {
+    let callout_lock_key = format!("CL_{}", context.cache_key.as_string());
+    let context_id = context.context_id;
+    let root_id = context.root_id;
     info!(
         context_id,
-        "thread(id: {}): trying to set callout-lock for request(key: {})", root_id, callout_key
+        "thread(id: {}): trying to set callout-lock for request(key: {})",
+        root_id,
+        callout_lock_key
     );
+    let callout_lock_value = CalloutLockValue {
+        owned_by: root_id,
+        waiters: Vec::new(),
+    };
+    // Doing this here just for the sake of performance improvement instead of creating it
+    // during every loop run caused by CasMismatch.
+    let queue_id = resolve_shared_queue(crate::VM_ID, &root_id.to_string()).unwrap();
+    if queue_id.is_none() {
+        return Err(UniqueCalloutError::MQResolveFail(root_id));
+    }
+    let callout_waiter = CalloutWaiter {
+        queue_id: queue_id.unwrap(),
+        http_context_id: context_id,
+    };
+    let lock_value_serialized = match bincode::serialize::<CalloutLockValue>(&callout_lock_value) {
+        Ok(res) => res,
+        Err(e) => {
+            return Err(UniqueCalloutError::SerializeFail {
+                what: "CalloutLockValue",
+                reason: *e,
+            })
+        }
+    };
 
-    // check if lock is already acquired or not
-    match get_shared_data(&callout_key)? {
-        (_, None) => {
-            info!(
-                context_id,
-                "thread ({}): trying to acquire lock ({}) the first time", root_id, callout_key
-            );
-            // Note: CAS is not 'None' here                              ∨∨∨∨∨∨
-            match set_shared_data(&callout_key, Some(root_id_str_bytes), Some(1)) {
-                Ok(()) => {
-                    info!(
-                        context_id,
-                        "thread ({}): callout-lock ({}) acquired", root_id, callout_key
-                    );
-                    Ok(true)
+    loop {
+        // check if lock is already acquired or not
+        match get_shared_data(&callout_lock_key) {
+            Ok((_, None)) => {
+                info!(
+                    context_id,
+                    "thread ({}): trying to acquire lock ({}) the first time",
+                    root_id,
+                    callout_lock_key
+                );
+                // Note: CAS is not 'None' here                                   ∨∨∨∨∨∨
+                match set_shared_data(&callout_lock_key, Some(&lock_value_serialized), Some(1)) {
+                    Ok(()) => {
+                        info!(
+                            context_id,
+                            "thread ({}): callout-lock ({}) acquired", root_id, callout_lock_key
+                        );
+                        return Ok(true);
+                    }
+                    Err(Status::CasMismatch) => {
+                        info!(
+                            context_id,
+                            "thread ({}): callout-lock ({}) for already acquired by another thread",
+                            root_id,
+                            callout_lock_key
+                        );
+                        continue;
+                    }
+                    Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
                 }
-                Err(Status::CasMismatch) => {
-                    info!(
-                        context_id,
-                        "thread ({}): callout-lock ({}) for already acquired by another thread",
-                        root_id,
-                        callout_key
-                    );
-                    Ok(false)
-                }
-                Err(e) => Err(e),
             }
-        }
-        (Some(bytes), Some(_)) => {
-            let lock_acquired_by =
-                std::str::from_utf8(&bytes).unwrap_or("thread id failed to deserialize");
-            info!(
-                context_id,
-                "thread ({}): callout-lock ({}) already acquired by thread ({})",
-                root_id,
-                callout_key,
-                lock_acquired_by
-            );
-            Ok(false)
-        }
-        (None, Some(cas)) => {
-            info!(
-                context_id,
-                "thread ({}): callout-lock ({}) was already free and trying to acquire again",
-                root_id,
-                callout_key
-            );
-            match set_shared_data(&callout_key, Some(root_id_str_bytes), Some(cas)) {
-                Ok(()) => {
-                    info!(
-                        context_id,
-                        "thread ({}): callout-lock ({}) successfully acquired",
-                        root_id,
-                        callout_key
-                    );
-                    Ok(true)
+            Ok((Some(bytes), Some(cas))) => {
+                let mut stored_lock_value = match bincode::deserialize::<CalloutLockValue>(&bytes) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        return Err(UniqueCalloutError::DeserializeFail {
+                            what: "CalloutLockValue",
+                            reason: *e,
+                        })
+                    }
+                };
+                info!(
+                    context_id,
+                    "thread ({}): callout-lock ({}) already acquired by thread ({}), trying to add to waitlist",
+                    root_id,
+                    callout_lock_key,
+                    stored_lock_value.owned_by
+                );
+                stored_lock_value.waiters.push(callout_waiter.clone());
+                let serialized_updated_lock_value =
+                    match bincode::serialize::<CalloutLockValue>(&stored_lock_value) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            return Err(UniqueCalloutError::SerializeFail {
+                                what: "(updated) CalloutLockValue",
+                                reason: *e,
+                            })
+                        }
+                    };
+                if let Err(Status::CasMismatch) = set_shared_data(
+                    &callout_lock_key,
+                    Some(&serialized_updated_lock_value),
+                    Some(cas),
+                ) {
+                    continue;
                 }
-                Err(Status::CasMismatch) => {
-                    info!(
-                        context_id,
-                        "thread ({}): callout-lock ({}) already acquired by another thread",
-                        root_id,
-                        callout_key
-                    );
-                    Ok(false)
-                }
-                Err(e) => Err(e),
+                info!(
+                    context_id,
+                    "thread({}): added to waitlist for callout-lock({})", root_id, callout_lock_key
+                );
+                WAITING_CONTEXTS.with(|waiters| {
+                    waiters
+                        .borrow_mut()
+                        .insert(context.context_id, context.clone())
+                });
+                return Ok(false);
             }
+            Ok((None, Some(cas))) => {
+                info!(
+                    context_id,
+                    "thread ({}): callout-lock ({}) was already free and trying to acquire again",
+                    root_id,
+                    callout_lock_key
+                );
+                match set_shared_data(&callout_lock_key, Some(&lock_value_serialized), Some(cas)) {
+                    Ok(()) => {
+                        info!(
+                            context_id,
+                            "thread ({}): callout-lock ({}) successfully acquired",
+                            root_id,
+                            callout_lock_key
+                        );
+                        return Ok(true);
+                    }
+                    Err(Status::CasMismatch) => {
+                        info!(
+                            context_id,
+                            "thread ({}): callout-lock ({}) already acquired by another thread",
+                            root_id,
+                            callout_lock_key
+                        );
+                        continue;
+                    }
+                    Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
+                }
+            }
+            Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
         }
     }
 }
@@ -209,106 +270,6 @@ pub fn free_callout_lock(
         );
         return Err(UniqueCalloutError::ProxyFailure(e));
     }
-    Ok(())
-}
-
-pub fn add_to_callout_waitlist(context: &CacheFilter) -> Result<(), UniqueCalloutError> {
-    let waiters_key = format!("CW_{}", context.cache_key.as_string());
-    let queue_id = resolve_shared_queue(crate::VM_ID, &context.root_id.to_string()).unwrap();
-    if queue_id.is_none() {
-        // without queue id, we can't signal waiting thread to resume processing.
-        return Err(UniqueCalloutError::MQResolveFail(context.root_id));
-    }
-    let callout_waiter = CalloutWaiter {
-        queue_id: queue_id.unwrap(),
-        http_context_id: context.context_id,
-    };
-    info!(
-        context.context_id,
-        "thread({}): trying to add to callout waitlist", context.root_id
-    );
-
-    // Unless there is some internal error, there is a guarantee that 1 thread successfully
-    // writes to the cache. So, keep trying and eventually every thread will win.
-    loop {
-        match get_shared_data(&waiters_key) {
-            Ok((Some(bytes), Some(cas))) => {
-                info!(
-                    context.context_id,
-                    "thread({}): adding to existing waitlist", context.root_id
-                );
-                match bincode::deserialize::<Vec<CalloutWaiter>>(&bytes) {
-                    Ok(mut callout_waiters) => {
-                        callout_waiters.push(callout_waiter.clone());
-                        let serialized_cw =
-                            match bincode::serialize::<Vec<CalloutWaiter>>(&callout_waiters) {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    return Err(UniqueCalloutError::SerializeFail {
-                                        what: "Vec<CalloutWaiter>",
-                                        reason: *e,
-                                    })
-                                }
-                            };
-                        if let Err(Status::CasMismatch) =
-                            set_shared_data(&waiters_key, Some(&serialized_cw), Some(cas))
-                        {
-                            debug!(
-                                context.context_id,
-                                "thread({}): CAS mismatch while add callout-waiter({})",
-                                context.root_id,
-                                waiters_key
-                            );
-                            continue;
-                        }
-                        break;
-                    }
-                    Err(e) => {
-                        return Err(UniqueCalloutError::DeserializeFail {
-                            what: "Vec<CalloutWaiter>",
-                            reason: *e,
-                        });
-                    }
-                }
-            }
-            Ok((_, cas)) => {
-                info!(
-                    context.context_id,
-                    "thread({}): creating a new waitlist", context.root_id
-                );
-                let serialized_cw =
-                    match bincode::serialize::<Vec<CalloutWaiter>>(&vec![callout_waiter.clone()]) {
-                        Ok(res) => res,
-                        Err(e) => {
-                            return Err(UniqueCalloutError::SerializeFail {
-                                what: "Vec<CalloutWaiter>",
-                                reason: *e,
-                            })
-                        }
-                    };
-                // Again exploiting host implementation to avoid multi-initialization:
-                let cas = cas.unwrap_or(1);
-                if let Err(Status::CasMismatch) =
-                    set_shared_data(&waiters_key, Some(&serialized_cw), Some(cas))
-                {
-                    debug!(
-                        context.context_id,
-                        "thread({}): CAS mismatch while adding the first callout-waiter({})",
-                        context.root_id,
-                        waiters_key
-                    );
-                    continue;
-                }
-                break;
-            }
-            Err(e) => return Err(UniqueCalloutError::ProxyFailure(e)),
-        }
-    }
-    WAITING_CONTEXTS.with(|waiters| {
-        waiters
-            .borrow_mut()
-            .insert(context.context_id, context.clone())
-    });
     Ok(())
 }
 
