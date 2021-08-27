@@ -5,7 +5,7 @@ use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
     types::{ContextType, LogLevel},
 };
-use threescale::{proxy::CacheKey, structs::ThreescaleData};
+use threescale::{proxy::CacheKey, stats::*, structs::ThreescaleData};
 
 #[no_mangle]
 pub fn _start() {
@@ -16,6 +16,7 @@ pub fn _start() {
         Box::new(CacheFilterRoot {
             context_id,
             config: FilterConfig::default(),
+            stats: initialize_stats(),
         })
     });
 }
@@ -23,6 +24,7 @@ pub fn _start() {
 struct CacheFilterRoot {
     context_id: u32,
     config: FilterConfig,
+    stats: ThreescaleStats,
 }
 
 impl RootContext for CacheFilterRoot {
@@ -68,6 +70,7 @@ impl RootContext for CacheFilterRoot {
             update_cache_from_singleton: false,
             cache_key: CacheKey::default(),
             req_data: ThreescaleData::default(),
+            stats: self.stats.clone(),
         }))
     }
 

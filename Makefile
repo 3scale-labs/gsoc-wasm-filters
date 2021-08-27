@@ -79,7 +79,7 @@ integration: local-services
 	cp deployments/docker-compose/singleton_service.wasm integration-tests/artifacts/singleton_service.wasm
 	cp deployments/docker-compose/threescale_wasm_auth.wasm integration-tests/artifacts/threescale_wasm_auth.wasm
 	go clean -testcache
-	go test -p 1 ./... -v
+	go test -p 1 ./... -v -timeout 30m
 	rm -rf integration-tests/artifacts
 	docker-compose -f integration-tests/docker-compose.yaml down
 

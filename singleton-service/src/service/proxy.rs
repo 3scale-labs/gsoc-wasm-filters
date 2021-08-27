@@ -22,6 +22,7 @@ use threescale::{
         get_application_from_cache, remove_application_from_cache, set_application_to_cache,
         CacheKey, SHARED_MEMORY_COUNTER_KEY, SHARED_MEMORY_INITIAL_SIZE,
     },
+    stats::*,
     structs::{
         AppId, AppIdentifier, AppKey, Application, Message, Period, PeriodWindow, ServiceId,
         ServiceToken, ThreescaleData, UsageReport,
@@ -79,6 +80,7 @@ pub fn _start() {
             cache_keys: HashMap::new(),
             report_requests: HashMap::new(),
             auth_requests: HashMap::new(),
+            stats: initialize_stats(),
         })
     });
 }
@@ -91,6 +93,7 @@ struct SingletonService {
     cache_keys: HashMap<CacheKey, ServiceToken>,
     report_requests: HashMap<u32, Report>,
     auth_requests: HashMap<u32, CacheKey>,
+    stats: ThreescaleStats,
 }
 
 impl RootContext for SingletonService {
@@ -258,6 +261,7 @@ impl Context for SingletonService {
                 "HTTP request timeout for request with token_id: {}",
                 token_id
             );
+            increment_stat(&self.stats.authorize_timeouts);
             // Clear the context_id mapping hashmap.
             if self.report_requests.contains_key(&token_id) {
                 self.handle_report_response(status, &token_id);
@@ -523,6 +527,8 @@ impl SingletonService {
         if let Some(cache_key) = self.auth_requests.get(&token_id) {
             info!("Deleting application with key: {:?}", cache_key);
             remove_application_from_cache(&cache_key.as_string());
+            self.cache_keys.remove(cache_key);
+            decrement_stat(&self.stats.cached_apps);
             self.auth_requests.remove(&token_id);
         }
     }
