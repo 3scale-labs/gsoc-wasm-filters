@@ -1,6 +1,10 @@
 use crate::filter::http::CacheFilter;
 use crate::info;
-use proxy_wasm::{traits::HttpContext, types::Action};
+use proxy_wasm::{
+    hostcalls::{resume_http_request, send_http_response},
+    traits::HttpContext,
+    types::Action,
+};
 use threescale::structs::{AppIdentifier, ThreescaleData};
 use threescalers::{
     api_call::{ApiCall, Kind},
@@ -14,17 +18,18 @@ use threescalers::{
 };
 
 // Helper function to handle failure when request headers are recieved
-pub fn in_request_failure<C: HttpContext>(ctx: &C, filter: &CacheFilter) -> Action {
+pub fn in_request_failure(filter: &CacheFilter) -> Action {
     if filter.config.failure_mode_deny {
         if cfg!(feature = "visible_logs") {
             let (key, val) = crate::log::visible_logs::get_logs_header_pair(filter.context_id);
-            ctx.send_http_response(
+            send_http_response(
                 403,
                 vec![(key.as_ref(), val.as_ref())],
                 Some(b"Access forbidden.\n"),
-            );
+            )
+            .unwrap(); // Safe for current implementation.
         } else {
-            ctx.send_http_response(403, vec![], Some(b"Access forbidden.\n"));
+            send_http_response(403, vec![], Some(b"Access forbidden.\n")).unwrap();
         }
         return Action::Pause;
     }
@@ -32,20 +37,21 @@ pub fn in_request_failure<C: HttpContext>(ctx: &C, filter: &CacheFilter) -> Acti
 }
 
 // Helper function to handle failure during processing
-pub fn request_process_failure<C: HttpContext>(ctx: &C, filter: &CacheFilter) {
+pub fn request_process_failure(filter: &CacheFilter) {
     if filter.config.failure_mode_deny {
         if cfg!(feature = "visible_logs") {
             let (key, val) = crate::log::visible_logs::get_logs_header_pair(filter.context_id);
-            ctx.send_http_response(
+            send_http_response(
                 403,
                 vec![(key.as_ref(), val.as_ref())],
                 Some(b"Access forbidden.\n"),
-            );
+            )
+            .unwrap(); //
         } else {
-            ctx.send_http_response(403, vec![], Some(b"Access forbidden.\n"));
+            send_http_response(403, vec![], Some(b"Access forbidden.\n")).unwrap();
         }
     }
-    ctx.resume_http_request();
+    resume_http_request().unwrap();
 }
 
 pub fn do_auth_call<C: HttpContext>(
@@ -86,7 +92,7 @@ pub fn do_auth_call<C: HttpContext>(
         Ok(result) => result,
         Err(e) => {
             info!(filter.context_id, "couldn't contact 3scale: {}", e);
-            return in_request_failure(ctx, filter);
+            return in_request_failure(filter);
         }
     };
 
@@ -114,7 +120,7 @@ pub fn do_auth_call<C: HttpContext>(
         ),
         Err(e) => {
             info!(filter.context_id, "couldn't contact 3scale: {:?}", e);
-            return in_request_failure(ctx, filter);
+            return in_request_failure(filter);
         }
     };
     // pause the current request to wait for the response from 3scale
