@@ -27,6 +27,7 @@ use threescalers::response::{Authorization, AuthorizationStatus};
 
 const QUEUE_NAME: &str = "message_queue";
 const VM_ID: &str = "my_vm_id";
+const TIMEOUT_STATUS: &str = "504";
 
 #[derive(Debug, thiserror::Error)]
 enum CacheHitError {
@@ -395,65 +396,82 @@ impl Context for CacheFilter {
             self.context_id,
             "received response from 3scale: token: {}", token_id
         );
-        match self.get_http_call_response_body(0, body_size) {
-            Some(bytes) => {
-                match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
-                    Ok(Authorization::Status(response)) => {
-                        if response.is_authorized() || response.usage_reports().is_some() {
-                            if let Err(e) = self.handle_auth_response(&response) {
-                                warn!(self.context_id, "handling auth response failed: {:?}", e);
-                                request_process_failure(self, self)
+        let headers = self.get_http_call_response_headers();
+        let status = headers
+            .iter()
+            .find(|(key, _)| key.as_str() == ":status")
+            .map(|(_, value)| value)
+            .unwrap();
+        if status != TIMEOUT_STATUS {
+            match self.get_http_call_response_body(0, body_size) {
+                Some(bytes) => {
+                    match Authorization::from_str(std::str::from_utf8(&bytes).unwrap()) {
+                        Ok(Authorization::Status(response)) => {
+                            if response.is_authorized() || response.usage_reports().is_some() {
+                                if let Err(e) = self.handle_auth_response(&response) {
+                                    warn!(
+                                        self.context_id,
+                                        "handling auth response failed: {:?}", e
+                                    );
+                                    request_process_failure(self, self)
+                                }
+                            } else if cfg!(feature = "visible_logs") {
+                                let (key, val) =
+                                    crate::log::visible_logs::get_logs_header_pair(self.context_id);
+                                self.send_http_response(
+                                    403,
+                                    vec![(key.as_ref(), val.as_ref())],
+                                    Some(response.reason().unwrap().as_bytes()),
+                                );
+                            } else {
+                                increment_stat(&self.stats.unauthorized);
+                                self.send_http_response(
+                                    403,
+                                    vec![],
+                                    Some(response.reason().unwrap().as_bytes()),
+                                )
                             }
-                        } else if cfg!(feature = "visible_logs") {
-                            let (key, val) =
-                                crate::log::visible_logs::get_logs_header_pair(self.context_id);
-                            self.send_http_response(
-                                403,
-                                vec![(key.as_ref(), val.as_ref())],
-                                Some(response.reason().unwrap().as_bytes()),
+                        }
+                        Ok(Authorization::Error(auth_error)) => {
+                            info!(
+                                self.context_id,
+                                "authorization error with code: {}",
+                                auth_error.code()
                             );
-                        } else {
-                            increment_stat(&self.stats.unauthorized);
-                            self.send_http_response(
-                                403,
-                                vec![],
-                                Some(response.reason().unwrap().as_bytes()),
-                            )
+                            request_process_failure(self, self);
+                            return;
+                        }
+                        Err(e) => {
+                            info!(
+                                self.context_id,
+                                "parsing response from 3scale failed: {:#?} with token: {}",
+                                e,
+                                token_id
+                            );
+                            request_process_failure(self, self);
+                            return;
                         }
                     }
-                    Ok(Authorization::Error(auth_error)) => {
-                        info!(
-                            self.context_id,
-                            "authorization error with code: {}",
-                            auth_error.code()
-                        );
-                        request_process_failure(self, self);
-                        return;
-                    }
-                    Err(e) => {
-                        info!(
-                            self.context_id,
-                            "parsing response from 3scale failed: {:#?} with token: {}",
-                            e,
-                            token_id
-                        );
-                        request_process_failure(self, self);
-                        return;
-                    }
-                }
 
-                info!(
-                    self.context_id,
-                    "data received and parsed from callout with token :{}", token_id
-                );
+                    info!(
+                        self.context_id,
+                        "data received and parsed from callout with token :{}", token_id
+                    );
+                }
+                None => {
+                    info!(
+                        self.context_id,
+                        "Found nothing in the response with token: {}", token_id
+                    );
+                    request_process_failure(self, self);
+                }
             }
-            None => {
-                info!(
-                    self.context_id,
-                    "Found nothing in the response with token: {}", token_id
-                );
-                request_process_failure(self, self);
-            }
+        } else {
+            info!(
+                self.context_id,
+                "HTTP request timeout for request with token_id: {}", token_id
+            );
+            increment_stat(&self.stats.authorize_timeouts);
         }
     }
 }
