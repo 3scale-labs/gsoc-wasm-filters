@@ -33,7 +33,7 @@ pub enum UniqueCalloutError<'a> {
 
 // This struct is serialized and stored in the shared data for callout-lock winner
 // to know which thread to wake up and to let waiters know which http context to resume processing.
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CalloutWaiter {
     /// MQ id of the thread waiting for callout response.
     pub queue_id: u32,
@@ -41,8 +41,17 @@ pub struct CalloutWaiter {
     pub http_context_id: u32,
 }
 
+/// This struct is serialized and stored as the value of a callout lock.
+#[derive(Debug, Serialize, Deserialize)]
+struct CalloutLockValue {
+    /// Id of the thread who owns the lock.
+    pub owned_by: u32,
+    /// List of contexts that are waiting for lock to be freed.
+    pub waiters: Vec<CalloutWaiter>,
+}
+
 // This enum is passed to thread-specific MQs to let waiters know how to resume processing.
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum WaiterAction {
     /// Follow the cache hit path with context_id used as inner value.
     HandleCacheHit(u32),
@@ -81,15 +90,6 @@ pub enum WaiterAction {
 
 * Please read host implementation (shared_data.cc/h) and Rust SDK/hostcalls.rs for better understanding.
 **/
-
-/// This struct is serialized and stored as the value of a callout lock.
-#[derive(Serialize, Deserialize)]
-struct CalloutLockValue {
-    // Id of the thread who owns the lock.
-    pub owned_by: u32,
-    // List of contexts that are waiting for lock to be freed.
-    pub waiters: Vec<CalloutWaiter>,
-}
 
 // Callout lock is acquired by placing a key-value pair inside shared data.
 // Return Ok(true) when lock is acquired and Ok(false) when added to waitlist.
