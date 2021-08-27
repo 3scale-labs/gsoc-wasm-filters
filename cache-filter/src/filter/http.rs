@@ -1,10 +1,7 @@
 use crate::{
     configuration::FilterConfig,
     debug, info,
-    unique_callout::{
-        add_to_callout_waitlist, free_callout_lock, send_action_to_waiters, set_callout_lock,
-        WaiterAction,
-    },
+    unique_callout::{free_callout_lock, send_action_to_waiters, set_callout_lock, WaiterAction},
     utils::{do_auth_call, in_request_failure, request_process_failure},
     warn,
 };
@@ -127,22 +124,9 @@ impl HttpContext for CacheFilter {
                         self.context_id,
                         "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
-                    return match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
+                    return match set_callout_lock(self) {
                         Ok(true) => do_auth_call(self, self, &request_data),
-                        Ok(false) => {
-                            if let Err(e) = add_to_callout_waitlist(self) {
-                                warn!(
-                                    self.context_id,
-                                    "failed to add current context to callout-waitlist: {}", e
-                                );
-                                in_request_failure(self, self);
-                            }
-                            info!(
-                                self.context_id,
-                                "successfully added current context to callout-waitlist"
-                            );
-                            Action::Pause
-                        }
+                        Ok(false) => Action::Pause,
                         Err(e) => {
                             warn!(
                                 self.context_id,
@@ -171,22 +155,9 @@ impl HttpContext for CacheFilter {
             }
             Err(e) => {
                 info!(self.context_id, "cache miss: {}", e);
-                match set_callout_lock(self.root_id, self.context_id, &self.cache_key) {
+                match set_callout_lock(self) {
                     Ok(true) => do_auth_call(self, self, &request_data),
-                    Ok(false) => {
-                        if let Err(e) = add_to_callout_waitlist(self) {
-                            warn!(
-                                self.context_id,
-                                "failed to add current context to callout-waitlist: {}", e
-                            );
-                            return in_request_failure(self, self);
-                        }
-                        info!(
-                            self.context_id,
-                            "successfully added current context to callout-waitlist"
-                        );
-                        Action::Pause
-                    }
+                    Ok(false) => Action::Pause,
                     Err(e) => {
                         warn!(
                             self.context_id,
