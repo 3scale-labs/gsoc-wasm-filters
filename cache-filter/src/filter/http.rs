@@ -132,17 +132,13 @@ impl HttpContext for CacheFilter {
         }
 
         match get_application_from_cache(&self.cache_key) {
-            Ok((mut app, cas)) => {
-                info!(self.context_id, "cache hit");
-                increment_stat(&self.stats.cache_hits);
-                match self.handle_cache_hit(&mut app, cas) {
-                    Ok(()) => Action::Continue,
-                    Err(e) => {
-                        warn!(self.context_id, "cache hit flow failed: {}", e);
-                        in_request_failure(self, self)
-                    }
+            Ok((mut app, cas)) => match self.handle_cache_hit(&mut app, cas) {
+                Ok(()) => Action::Continue,
+                Err(e) => {
+                    warn!(self.context_id, "cache hit flow failed: {}", e);
+                    in_request_failure(self)
                 }
-            }
+            },
             Err(e) => {
                 info!(self.context_id, "cache miss: {}", e);
                 // TODO: Avoid multiple calls for same application
@@ -183,6 +179,8 @@ impl CacheFilter {
         app: &mut Application,
         mut app_cas: u32,
     ) -> Result<(), CacheHitError> {
+        info!(self.context_id, "cache hit");
+        increment_stat(&self.stats.cache_hits);
         let queue_id = self
             .resolve_shared_queue(VM_ID, QUEUE_NAME)
             .ok_or(CacheHitError::MQNotFound)?;
@@ -413,7 +411,7 @@ impl Context for CacheFilter {
                                         self.context_id,
                                         "handling auth response failed: {:?}", e
                                     );
-                                    request_process_failure(self, self)
+                                    request_process_failure(self)
                                 }
                             } else if cfg!(feature = "visible_logs") {
                                 let (key, val) =
@@ -438,7 +436,7 @@ impl Context for CacheFilter {
                                 "authorization error with code: {}",
                                 auth_error.code()
                             );
-                            request_process_failure(self, self);
+                            request_process_failure(self);
                             return;
                         }
                         Err(e) => {
@@ -448,7 +446,7 @@ impl Context for CacheFilter {
                                 e,
                                 token_id
                             );
-                            request_process_failure(self, self);
+                            request_process_failure(self);
                             return;
                         }
                     }
@@ -463,7 +461,7 @@ impl Context for CacheFilter {
                         self.context_id,
                         "Found nothing in the response with token: {}", token_id
                     );
-                    request_process_failure(self, self);
+                    request_process_failure(self);
                 }
             }
         } else {
