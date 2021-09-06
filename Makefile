@@ -53,7 +53,6 @@ clean-apisonator:
 
 auth: ## Build threescale_wasm_auth filter. 
 	@echo "> Building threescale_wasm_auth filter"
-# 	Temporary remove pull from origin untill the auth main is stable.
 	git submodule foreach git pull origin main
 #	git submodule update --init
 	cd threescale-wasm-auth && \
