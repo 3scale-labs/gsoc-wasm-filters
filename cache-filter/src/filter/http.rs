@@ -470,6 +470,7 @@ impl Context for CacheFilter {
                 "HTTP request timeout for request with token_id: {}", token_id
             );
             increment_stat(&self.stats.authorize_timeouts);
+            request_process_failure(self);
         }
     }
 }

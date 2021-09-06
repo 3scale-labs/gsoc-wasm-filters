@@ -85,7 +85,8 @@ static_resources:
                           "url": "https://istiodevel-admin.3scale.net/",
                           "timeout": 5000
                         },
-                        "token": "atoken"
+                        "token": "atoken",
+                        "ttl": 180
                       },
                       "backend": {
                         "name": "backend-name",
@@ -115,6 +116,87 @@ static_resources:
                                 }
                               },
                               {
+                                "header": {
+                                  "keys": [
+                                    "authorization"
+                                  ],
+                                  "ops": [
+                                    {
+                                      "split": {
+                                        "separator": " ",
+                                        "max": 2
+                                      }
+                                    },
+                                    {
+                                      "length": {
+                                        "min": 2
+                                      }
+                                    },
+                                    "reverse",
+                                    {
+                                      "glob": [
+                                        "Basic"
+                                      ]
+                                    },
+                                    {
+                                      "drop": {
+                                        "tail": 1
+                                      }
+                                    },
+                                    "base64_urlsafe",
+                                    {
+                                      "split": {
+                                        "separator": ":",
+                                        "max": 2
+                                      }
+                                    },
+                                    {
+                                      "test": {
+                                        "if": {
+                                          "length": {
+                                            "min": 2
+                                          }
+                                        },
+                                        "then": [
+                                          {
+                                            "strlen": {
+                                              "min": 1,
+                                              "max": 63,
+                                              "mode": "utf8"
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "assert": [
+                                        {
+                                          "and": [
+                                            "reverse",
+                                            {
+                                              "or": [
+                                                {
+                                                  "strlen": {
+                                                    "min": 8,
+                                                    "mode": "utf8"
+                                                  }
+                                                },
+                                                {
+                                                  "glob": [
+                                                    "aladdin",
+                                                    "admin"
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              },
+                              {
                                 "query_string": {
                                   "keys": [
                                     "app_id",
@@ -131,6 +213,13 @@ static_resources:
                                   "keys": [
                                     "azp",
                                     "aud"
+                                  ],
+                                  "ops": [
+                                    {
+                                      "take": {
+                                        "head": 1
+                                      }
+                                    }
                                   ]
                                 }
                               },
@@ -140,48 +229,19 @@ static_resources:
                                     "x-jwt-payload"
                                   ],
                                   "ops": [
+                                    "base64_urlsafe",
                                     {
-                                      "decode": "base64_urlsafe"
-                                    },
-                                    {
-                                      "format": {
-                                        "json": {
-                                          "path": [],
-                                          "keys": [
-                                            "azp",
-                                            "aud"
-                                          ]
-                                        }
-                                      }
-                                    }
-                                  ]
-                                }
-                              },
-                              {
-                                "header": {
-                                  "keys": [
-                                    "authorization"
-                                  ],
-                                  "ops": [
-                                    {
-                                      "format": {
-                                        "joined": {
-                                          "separator": " ",
-                                          "max": 2,
-                                          "indexes": [1]
-                                        }
+                                      "json": {
+                                        "path": [],
+                                        "keys": [
+                                          "azp",
+                                          "aud"
+                                        ]
                                       }
                                     },
                                     {
-                                      "decode": "base64_urlsafe"
-                                    },
-                                    {
-                                      "format": {
-                                        "joined": {
-                                          "separator": ":",
-                                          "max": 2,
-                                          "indexes": [0, 1]
-                                        }
+                                      "take": {
+                                        "head": 1
                                       }
                                     }
                                   ]
@@ -213,15 +273,15 @@ static_resources:
                                   ],
                                   "ops": [
                                     {
-                                      "format": {
-                                        "joined": {
-                                          "separator": ":",
-                                          "max": 2,
-                                          "indexes": [
-                                            0
-                                          ]
-                                        }
+                                      "split": {
+                                        "separator": ":",
+                                        "max": 2
                                       }
+                                    },
+                                    {
+                                      "indexes": [
+                                        0
+                                      ]
                                     }
                                   ]
                                 }
@@ -232,16 +292,6 @@ static_resources:
                             {
                               "method": "GET",
                               "pattern": "/",
-                              "usages": [
-                                {
-                                  "name": "hits",
-                                  "delta": 1
-                                }
-                              ]
-                            },
-                            {
-                              "method": "GET",
-                              "pattern": "/test",
                               "usages": [
                                 {
                                   "name": "hits",

@@ -46,6 +46,8 @@ func (suite *ConfigTestSuite) TestServiceNotFound() {
 	res, resErr := suite.client.Do(req)
 	require.Nilf(suite.T(), resErr, "Error sending the HTTP request: %v", resErr)
 
+	fmt.Printf("Response: %v \n", res)
+
 	var logs []string
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)
 	require.Nilf(suite.T(), resErr, "Error while unmarshaling: %v", unmarshalErr)
@@ -85,6 +87,8 @@ func (suite *ConfigTestSuite) TestWrongUpstreamURL() {
 
 	res, resErr := suite.client.Do(req)
 	require.Nilf(suite.T(), resErr, "Error creating the HTTP request: %v", resErr)
+
+	fmt.Printf("Response: %v \n", res)
 
 	var logs []string
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)
@@ -126,6 +130,8 @@ func (suite *ConfigTestSuite) TestWrongClusterName() {
 
 	res, resErr := suite.client.Do(req)
 	require.Nilf(suite.T(), resErr, "Error creating the HTTP request: %v", resErr)
+
+	fmt.Printf("Response: %v \n", res)
 
 	var logs []string
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)

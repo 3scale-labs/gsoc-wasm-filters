@@ -50,6 +50,8 @@ func (suite *CacheTestSuite) TestServiceManagementTimeout() {
 	res, resErr := suite.client.Do(req)
 	require.Nilf(suite.T(), resErr, "Error sending the HTTP request: %v", resErr)
 
+	fmt.Printf("Response: %v \n", res)
+
 	var logs []string
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)
 	require.Nilf(suite.T(), unmarshalErr, "Error while unmarshaling: %v", unmarshalErr)
