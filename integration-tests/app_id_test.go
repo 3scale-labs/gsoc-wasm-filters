@@ -145,11 +145,10 @@ func (suite *AppCredentialTestSuite) TestAppIdSuccess() {
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	req.Header = http.Header{
-		"Host":      []string{"localhost"},
-		"x-app-id":  []string{suite.AppID},
-		"x-app-key": []string{suite.AppKey},
-	}
+	q := req.URL.Query()
+	q.Add("app_id", suite.AppID)
+	q.Add("app_key", suite.AppKey)
+	req.URL.RawQuery = q.Encode()
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
 	fmt.Printf("Response: %v", res)
@@ -160,11 +159,10 @@ func (suite *AppCredentialTestSuite) TestAppIdForbidden() {
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	req.Header = http.Header{
-		"Host":      []string{"localhost"},
-		"x-app-id":  []string{"wrong-app-id"},
-		"x-app-key": []string{suite.AppKey},
-	}
+	q := req.URL.Query()
+	q.Add("app_id", "wrong-app-id")
+	q.Add("app_key", suite.AppKey)
+	req.URL.RawQuery = q.Encode()
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
 	fmt.Printf("Response: %v", res)
@@ -231,10 +229,9 @@ func (suite *AppCredentialTestSuite) TestUnlimitedAppId() {
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	req.Header = http.Header{
-		"Host":     []string{"localhost"},
-		"x-app-id": []string{"unlimited-app-id"},
-	}
+	q := req.URL.Query()
+	q.Add("app_id", "unlimited-app-id")
+	req.URL.RawQuery = q.Encode()
 	res, errHTTP := client.Do(req)
 	require.Nilf(suite.T(), errHTTP, "Error sending the HTTP request: %v", errHTTP)
 	fmt.Printf("Response: %v", res)

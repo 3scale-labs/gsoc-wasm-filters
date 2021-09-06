@@ -38,13 +38,14 @@ func (suite *ConfigTestSuite) TestServiceNotFound() {
 	}, 15*time.Second, 1*time.Second, "Envoy has not started")
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	req.Header = http.Header{
-		"Host":     []string{"localhost"},
-		"x-app-id": []string{"does-not-matter"},
-	}
+	q := req.URL.Query()
+	q.Add("app_id", "does-not-matter")
+	req.URL.RawQuery = q.Encode()
 
 	res, resErr := suite.client.Do(req)
 	require.Nilf(suite.T(), resErr, "Error sending the HTTP request: %v", resErr)
+
+	fmt.Printf("Response: %v \n", res)
 
 	var logs []string
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)
@@ -78,13 +79,14 @@ func (suite *ConfigTestSuite) TestWrongUpstreamURL() {
 	}, 15*time.Second, 1*time.Second, "Envoy has not started")
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	req.Header = http.Header{
-		"Host":     []string{"localhost"},
-		"x-app-id": []string{"does-not-matter"},
-	}
+	q := req.URL.Query()
+	q.Add("app_id", "does-not-matter")
+	req.URL.RawQuery = q.Encode()
 
 	res, resErr := suite.client.Do(req)
 	require.Nilf(suite.T(), resErr, "Error creating the HTTP request: %v", resErr)
+
+	fmt.Printf("Response: %v \n", res)
 
 	var logs []string
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)
@@ -119,13 +121,14 @@ func (suite *ConfigTestSuite) TestWrongClusterName() {
 	}, 15*time.Second, 1*time.Second, "Envoy has not started")
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	req.Header = http.Header{
-		"Host":     []string{"localhost"},
-		"x-app-id": []string{"does-not-matter"},
-	}
+	q := req.URL.Query()
+	q.Add("app_id", "does-not-matter")
+	req.URL.RawQuery = q.Encode()
 
 	res, resErr := suite.client.Do(req)
 	require.Nilf(suite.T(), resErr, "Error creating the HTTP request: %v", resErr)
+
+	fmt.Printf("Response: %v \n", res)
 
 	var logs []string
 	unmarshalErr := json.Unmarshal([]byte(res.Header["Filter-Logs"][0]), &logs)

@@ -174,10 +174,9 @@ func (suite *SingletonFlushTestSuite) TestSingletonContainerFlush() {
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	req.Header = http.Header{
-		"Host":     []string{"localhost"},
-		"x-app-id": []string{"test-app-id-1"},
-	}
+	q := req.URL.Query()
+	q.Add("app_id", "test-app-id-1")
+	req.URL.RawQuery = q.Encode()
 	for i := 0; i < 4; i++ {
 		res, _ := client.Do(req)
 		fmt.Printf("Response: %v\n", res)
@@ -222,10 +221,9 @@ func (suite *SingletonFlushTestSuite) TestSingletonPeriodicalFlush() {
 	client := &http.Client{}
 	req, errReq := http.NewRequest("GET", "http://127.0.0.1:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	req.Header = http.Header{
-		"Host":     []string{"localhost"},
-		"x-app-id": []string{"test-app-id-1"},
-	}
+	q := req.URL.Query()
+	q.Add("app_id", "test-app-id-1")
+	req.URL.RawQuery = q.Encode()
 	for i := 0; i < 5; i++ {
 		res, _ := client.Do(req)
 		if i == 0 {
