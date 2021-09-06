@@ -42,9 +42,10 @@ func (suite *CacheTestSuite) TestServiceManagementTimeout() {
 	// Initializing backend state is not required since we are testing for timeout
 	req, errReq := http.NewRequest("GET", "http://localhost:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	q := req.URL.Query()
-	q.Add("app_id", "does-not-matter")
-	req.URL.RawQuery = q.Encode()
+	req.Header = http.Header{
+		"Host":     []string{"localhost"},
+		"x-app-id": []string{"does-not-matter"},
+	}
 
 	res, resErr := suite.client.Do(req)
 	require.Nilf(suite.T(), resErr, "Error sending the HTTP request: %v", resErr)
@@ -169,9 +170,10 @@ func (suite *CacheTestSuite) TestRateLimitFlow() {
 
 	req, errReq := http.NewRequest("GET", "http://localhost:9095/", nil)
 	require.Nilf(suite.T(), errReq, "Error creating the HTTP request: %v", errReq)
-	q := req.URL.Query()
-	q.Add("app_id", appID)
-	req.URL.RawQuery = q.Encode()
+	req.Header = http.Header{
+		"Host":     []string{"localhost"},
+		"x-app-id": []string{appID},
+	}
 
 	notLimitedPattern := []string{".*request is allowed.*"}
 	rateLimitedPattern := []string{".*request is rate-limited"}
