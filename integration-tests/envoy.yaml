@@ -108,7 +108,14 @@ static_resources:
                           ],
                           "credentials": {
                             "app_id": [
-                              {
+                            {
+                              "header": {
+                                "keys": [
+                                  "x-app-id"
+                                ]
+                              }
+                            },
+                            {
                                 "header": {
                                   "keys": [
                                     "authorization"

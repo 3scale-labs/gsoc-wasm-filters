@@ -111,6 +111,13 @@ static_resources:
                               {
                                 "header": {
                                   "keys": [
+                                    "x-app-id"
+                                  ]
+                                }
+                              },
+                              {
+                                "header": {
+                                  "keys": [
                                     "authorization"
                                   ],
                                   "ops": [
