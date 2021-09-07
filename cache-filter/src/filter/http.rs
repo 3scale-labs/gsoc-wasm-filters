@@ -1,9 +1,10 @@
+#[cfg(feature = "unique_callout")]
+use crate::unique_callout;
+#[cfg(not(feature = "unique_callout"))]
+use crate::unique_callout_dummy as unique_callout;
 use crate::{
     configuration::FilterConfig,
     debug, info,
-    unique_callout::{
-        free_callout_lock_and_notify_waiters, set_callout_lock, SetCalloutLockStatus, WaiterAction,
-    },
     utils::{do_auth_call, in_request_failure, request_process_failure},
     warn,
 };
@@ -28,6 +29,9 @@ use threescale::{
     utils::*,
 };
 use threescalers::response::{Authorization, AuthorizationStatus};
+use unique_callout::{
+    free_callout_lock_and_notify_waiters, set_callout_lock, SetCalloutLockStatus, WaiterAction,
+};
 
 const QUEUE_NAME: &str = "message_queue";
 const TIMEOUT_STATUS: &str = "504";
