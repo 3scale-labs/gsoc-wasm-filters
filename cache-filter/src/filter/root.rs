@@ -150,7 +150,7 @@ impl RootContext for CacheFilterRoot {
                         // This can happen either there was no response from 3scale (e.g. timeout) or handling
                         // response failed (e.g. parsing).
                         info!(context_to_resume, "thread({}): handling auth callout failure for this waiting context", self.id);
-                        request_process_failure(context, context);
+                        request_process_failure(context);
                         waiters.remove(&context_to_resume);
                         return;
                     }
@@ -181,7 +181,7 @@ impl RootContext for CacheFilterRoot {
                                 debug!(context_to_resume, "handle_cache_hit fail: {}", e);
                                 // if there is error from handle_cache_hit, request flow is not changed
                                 // and should be done by the code handling the returned error.
-                                request_process_failure(context, context);
+                                request_process_failure(context);
                             } else {
                                 context.resume_http_request();
                             }

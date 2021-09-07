@@ -144,7 +144,7 @@ impl HttpContext for CacheFilter {
                                 }
                                 Err(e) => {
                                     debug!(self.context_id, "user_key->app_id mapping not found after callout response: {:?}", e);
-                                    return in_request_failure(self, self);
+                                    return in_request_failure(self);
                                 }
                             }
                         }
@@ -155,7 +155,7 @@ impl HttpContext for CacheFilter {
                                 self.cache_key.as_string(),
                                 e
                             );
-                            return in_request_failure(self, self);
+                            return in_request_failure(self);
                         }
                     };
                 }
@@ -187,12 +187,12 @@ impl HttpContext for CacheFilter {
                                         self.context_id,
                                         "cache hit flow failed after callout response: {}", e
                                     );
-                                    in_request_failure(self, self)
+                                    in_request_failure(self)
                                 }
                             },
                             Err(e) => {
                                 debug!(self.context_id, "failed to fetch app from shared data after callout response: {}", e);
-                                in_request_failure(self, self)
+                                in_request_failure(self)
                             }
                         }
                     }
@@ -203,7 +203,7 @@ impl HttpContext for CacheFilter {
                             self.cache_key.as_string(),
                             e
                         );
-                        in_request_failure(self, self)
+                        in_request_failure(self)
                     }
                 }
             }
@@ -461,7 +461,7 @@ impl Context for CacheFilter {
 
         // Depending on how response is handled here, waiters should resume accordingly.
         // Note: Inner value of this enum is changed to context_id to resume in send_action_to_waiters().
-        let mut waiter_action = WaiterAction::HandleCacheHit(0);
+        let mut waiter_action = WaiterAction::HandleFailure(0);
 
         let headers = self.get_http_call_response_headers();
         let status = headers
@@ -480,11 +480,11 @@ impl Context for CacheFilter {
                                         self.context_id,
                                         "handling auth response failed: {:?}", e
                                     );
-                                    waiter_action = WaiterAction::HandleFailure(0);
                                     request_process_failure(self)
+                                } else {
+                                    waiter_action = WaiterAction::HandleCacheHit(0);
                                 }
                             } else if cfg!(feature = "visible_logs") {
-                                waiter_action = WaiterAction::HandleFailure(0);
                                 let (key, val) =
                                     crate::log::visible_logs::get_logs_header_pair(self.context_id);
                                 self.send_http_response(
@@ -494,7 +494,6 @@ impl Context for CacheFilter {
                                 );
                             } else {
                                 increment_stat(&self.stats.unauthorized);
-                                waiter_action = WaiterAction::HandleFailure(0);
                                 self.send_http_response(
                                     403,
                                     vec![],
@@ -508,7 +507,6 @@ impl Context for CacheFilter {
                                 "authorization error with code: {}",
                                 auth_error.code()
                             );
-                            waiter_action = WaiterAction::HandleFailure(0);
                             request_process_failure(self);
                             return;
                         }
@@ -519,7 +517,6 @@ impl Context for CacheFilter {
                                 e,
                                 token_id
                             );
-                            waiter_action = WaiterAction::HandleFailure(0);
                             request_process_failure(self);
                         }
                     }
@@ -529,7 +526,6 @@ impl Context for CacheFilter {
                         self.context_id,
                         "Found nothing in the response with token: {}", token_id
                     );
-                    waiter_action = WaiterAction::HandleFailure(0);
                     request_process_failure(self);
                 }
             }
