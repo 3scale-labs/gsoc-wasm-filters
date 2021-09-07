@@ -1,19 +1,12 @@
 use crate::configuration::FilterConfig;
 use crate::filter::http::CacheFilter;
 use crate::rand::thread_rng::{thread_rng_init_fallible, ThreadRng};
-use crate::unique_callout::{WaiterAction, WAITING_CONTEXTS};
-use crate::utils::request_process_failure;
 use crate::{debug, info, warn};
 use proxy_wasm::{
-    hostcalls::set_effective_context,
     traits::{Context, HttpContext, RootContext},
     types::{ContextType, LogLevel},
 };
-use threescale::{
-    proxy::{get_app_id_from_cache, get_application_from_cache, CacheKey},
-    stats::*,
-    structs::{AppIdentifier, ThreescaleData},
-};
+use threescale::{proxy::CacheKey, stats::*, structs::ThreescaleData};
 
 #[no_mangle]
 pub fn _start() {
@@ -99,7 +92,16 @@ impl RootContext for CacheFilterRoot {
         }
     }
 
+    #[cfg(feature = "unique_callout")]
     fn on_queue_ready(&mut self, queue_id: u32) {
+        use crate::unique_callout::{WaiterAction, WAITING_CONTEXTS};
+        use crate::utils::request_process_failure;
+        use proxy_wasm::hostcalls::set_effective_context;
+        use threescale::{
+            proxy::{get_app_id_from_cache, get_application_from_cache},
+            structs::AppIdentifier,
+        };
+
         info!(
             self.context_id,
             "thread({}): on_queue called on the filter side", self.id
