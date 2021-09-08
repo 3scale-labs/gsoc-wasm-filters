@@ -14,7 +14,12 @@ categories = ["cache filter"]
 crate-type = ["cdylib"]
 
 [features]
+default = ["prng_pcg32"]
 visible_logs = []
+unique_callout = []
+prng_pcg32 = ["rand_pcg"]
+prng_xoshiro128 = ["rand_xoshiro"]
+prng_xorshift = ["rand_xorshift"]
 
 [dependencies]
 threescale = { path = "../threescale" }
@@ -28,3 +33,11 @@ threescalers = { git = "https://github.com/3scale-rs/threescalers", branch = "ma
 serde_xml = "0.9"
 thiserror = "1.0"
 url = { git = "https://github.com/3scale-rs/rust-url", branch = "3scale", features = ["serde"] }
+
+rand = { version = "^0.8", default-features = false }
+rand_seeder = { version = "^0.2" }
+rand_jitter = { version = "^0.3" }
+# PRNG implementation
+rand_xoshiro = { version = "^0.6", optional = true }
+rand_xorshift = { version = "^0.3", optional = true }
+rand_pcg = { version = "^0.3", optional = true }

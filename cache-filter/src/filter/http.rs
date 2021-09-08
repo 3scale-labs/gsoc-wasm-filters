@@ -1,8 +1,13 @@
+#[cfg(feature = "unique_callout")]
+use crate::unique_callout;
+#[cfg(not(feature = "unique_callout"))]
+use crate::unique_callout_dummy as unique_callout;
 use crate::{
     configuration::FilterConfig,
+    debug, info,
     utils::{do_auth_call, in_request_failure, request_process_failure},
+    warn,
 };
-use crate::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext},
     types::Action,
@@ -24,13 +29,15 @@ use threescale::{
     utils::*,
 };
 use threescalers::response::{Authorization, AuthorizationStatus};
+use unique_callout::{
+    free_callout_lock_and_notify_waiters, set_callout_lock, SetCalloutLockStatus, WaiterAction,
+};
 
 const QUEUE_NAME: &str = "message_queue";
-const VM_ID: &str = "my_vm_id";
 const TIMEOUT_STATUS: &str = "504";
 
 #[derive(Debug, thiserror::Error)]
-enum CacheHitError {
+pub enum CacheHitError {
     #[error("duration since time later than self")]
     TimeConversionErr(#[from] std::time::SystemTimeError),
     #[error("failure of is_rate_limited error")]
@@ -79,8 +86,10 @@ pub enum RequestDataError {
     UpstreamBuilderFail(#[from] threescalers::Error),
 }
 
+#[derive(Clone)]
 pub struct CacheFilter {
     pub context_id: u32,
+    pub root_id: u32,
     pub config: FilterConfig,
     pub update_cache_from_singleton: bool,
     pub cache_key: CacheKey,
@@ -124,9 +133,35 @@ impl HttpContext for CacheFilter {
                         self.context_id,
                         "user_key->app_id mapping not found! considering cache miss: {:?}", e
                     );
-                    // TODO: avoid multiple calls for identical requests
                     increment_stat(&self.stats.cache_misses);
-                    return do_auth_call(self, self, &request_data);
+                    match set_callout_lock(self) {
+                        Ok(SetCalloutLockStatus::LockAcquired) => {
+                            return do_auth_call(self, self, &request_data);
+                        }
+                        Ok(SetCalloutLockStatus::AddedToWaitlist) => return Action::Pause,
+                        Ok(SetCalloutLockStatus::ResponseCameFirst) => {
+                            match get_app_id_from_cache(user_key) {
+                                Ok(app_id) => {
+                                    request_data.app_id = AppIdentifier::from(app_id);
+                                    self.req_data.app_id = request_data.app_id.clone();
+                                    self.cache_key.set_app_id(&request_data.app_id);
+                                }
+                                Err(e) => {
+                                    debug!(self.context_id, "user_key->app_id mapping not found after callout response: {:?}", e);
+                                    return in_request_failure(self);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!(
+                                self.context_id,
+                                "failed to set callout-lock or add to waitlist for request(key: {}): {:?}",
+                                self.cache_key.as_string(),
+                                e
+                            );
+                            return in_request_failure(self);
+                        }
+                    };
                 }
             }
         }
@@ -141,11 +176,40 @@ impl HttpContext for CacheFilter {
             },
             Err(e) => {
                 info!(self.context_id, "cache miss: {}", e);
-                // TODO: Avoid multiple calls for same application
-                // saving request data to use when there is response from 3scale
-                // fetching new application state using authorize endpoint
                 increment_stat(&self.stats.cache_misses);
-                do_auth_call(self, self, &request_data)
+                match set_callout_lock(self) {
+                    Ok(SetCalloutLockStatus::LockAcquired) => {
+                        do_auth_call(self, self, &request_data)
+                    }
+                    Ok(SetCalloutLockStatus::AddedToWaitlist) => Action::Pause,
+                    Ok(SetCalloutLockStatus::ResponseCameFirst) => {
+                        match get_application_from_cache(&self.cache_key) {
+                            Ok((mut app, cas)) => match self.handle_cache_hit(&mut app, cas) {
+                                Ok(()) => Action::Continue,
+                                Err(e) => {
+                                    debug!(
+                                        self.context_id,
+                                        "cache hit flow failed after callout response: {}", e
+                                    );
+                                    in_request_failure(self)
+                                }
+                            },
+                            Err(e) => {
+                                debug!(self.context_id, "failed to fetch app from shared data after callout response: {}", e);
+                                in_request_failure(self)
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            self.context_id,
+                            "failed to set callout-lock for request(key: {}): {:?}",
+                            self.cache_key.as_string(),
+                            e
+                        );
+                        in_request_failure(self)
+                    }
+                }
             }
         }
     }
@@ -174,7 +238,7 @@ impl CacheFilter {
     }
 
     // app_cas can be zero if fetched for the first from 3scale
-    fn handle_cache_hit(
+    pub fn handle_cache_hit(
         &mut self,
         app: &mut Application,
         mut app_cas: u32,
@@ -182,7 +246,7 @@ impl CacheFilter {
         info!(self.context_id, "cache hit");
         increment_stat(&self.stats.cache_hits);
         let queue_id = self
-            .resolve_shared_queue(VM_ID, QUEUE_NAME)
+            .resolve_shared_queue(crate::VM_ID, QUEUE_NAME)
             .ok_or(CacheHitError::MQNotFound)?;
 
         let current_time = self.get_current_time().duration_since(UNIX_EPOCH)?;
@@ -394,6 +458,15 @@ impl Context for CacheFilter {
             self.context_id,
             "received response from 3scale: token: {}", token_id
         );
+
+        // Freeing of callout-lock requires the cache_key used to set the lock but cache_key
+        // attached to 'self' can change inside handle_auth_response (user_key to app_id).
+        let prev_cache_key = self.cache_key.clone();
+
+        // Depending on how response is handled here, waiters should resume accordingly.
+        // Note: Inner value of this enum is changed to context_id to resume in send_action_to_waiters().
+        let mut waiter_action = WaiterAction::HandleFailure(0);
+
         let headers = self.get_http_call_response_headers();
         let status = headers
             .iter()
@@ -412,6 +485,8 @@ impl Context for CacheFilter {
                                         "handling auth response failed: {:?}", e
                                     );
                                     request_process_failure(self)
+                                } else {
+                                    waiter_action = WaiterAction::HandleCacheHit(0);
                                 }
                             } else if cfg!(feature = "visible_logs") {
                                 let (key, val) =
@@ -447,14 +522,8 @@ impl Context for CacheFilter {
                                 token_id
                             );
                             request_process_failure(self);
-                            return;
                         }
                     }
-
-                    info!(
-                        self.context_id,
-                        "data received and parsed from callout with token :{}", token_id
-                    );
                 }
                 None => {
                     info!(
@@ -471,6 +540,17 @@ impl Context for CacheFilter {
             );
             increment_stat(&self.stats.authorize_timeouts);
             request_process_failure(self);
+        }
+        if let Err(e) = free_callout_lock_and_notify_waiters(
+            self.root_id,
+            self.context_id,
+            &prev_cache_key,
+            waiter_action,
+        ) {
+            warn!(
+                self.context_id,
+                "failed to free callout-lock after auth response: {}", e
+            );
         }
     }
 }
