@@ -16,7 +16,7 @@ pub fn thread_rng_init_fallible(
     ctx: &(dyn Context + Send + Sync),
     context_id: u32,
 ) -> Result<ThreadRng, Error> {
-    ThreadRng::thread_rng(ctx, context_id)
+    ThreadRng::new(ctx, context_id)
 }
 
 // Thread RNG callable from anywhere within the thread.
@@ -48,10 +48,7 @@ pub struct ThreadRng;
 impl ThreadRng {
     // Construct a thread
     #[inline]
-    pub fn thread_rng(
-        ctx: &(dyn Context + Send + Sync),
-        context_id: u32,
-    ) -> Result<Self, super::Error> {
+    pub fn new(ctx: &(dyn Context + Send + Sync), context_id: u32) -> Result<Self, super::Error> {
         imp::initialize(ctx, context_id).and(Ok(Self))
     }
 
