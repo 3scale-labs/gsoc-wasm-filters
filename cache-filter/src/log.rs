@@ -78,14 +78,3 @@ pub fn __custom_log(context: u32, args: std::fmt::Arguments, level: LogLevel) {
     visible_logs::store_logs(context, &message);
     proxy_wasm::hostcalls::log(level, &message).unwrap();
 }
-
-// This is required for clean use of cfg! with visible_logs module
-#[cfg(not(feature = "visible_logs"))]
-pub mod visible_logs {
-    pub fn get_logs_header_pair(_: u32) -> (String, String) {
-        (
-            "enable visible_logs".to_string(),
-            "using cargo flags first".to_string(),
-        )
-    }
-}

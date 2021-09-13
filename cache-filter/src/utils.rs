@@ -20,17 +20,7 @@ use threescalers::{
 // Helper function to handle failure when request headers are recieved
 pub fn in_request_failure(filter: &CacheFilter) -> Action {
     if filter.config.failure_mode_deny {
-        if cfg!(feature = "visible_logs") {
-            let (key, val) = crate::log::visible_logs::get_logs_header_pair(filter.context_id);
-            send_http_response(
-                403,
-                vec![(key.as_ref(), val.as_ref())],
-                Some(b"Access forbidden.\n"),
-            )
-            .unwrap(); // Safe for current implementation.
-        } else {
-            send_http_response(403, vec![], Some(b"Access forbidden.\n")).unwrap();
-        }
+        send_http_response(403, vec![], Some(b"Access forbidden.\n")).unwrap();
         return Action::Pause;
     }
     Action::Continue
@@ -39,17 +29,7 @@ pub fn in_request_failure(filter: &CacheFilter) -> Action {
 // Helper function to handle failure during processing
 pub fn request_process_failure(filter: &CacheFilter) {
     if filter.config.failure_mode_deny {
-        if cfg!(feature = "visible_logs") {
-            let (key, val) = crate::log::visible_logs::get_logs_header_pair(filter.context_id);
-            send_http_response(
-                403,
-                vec![(key.as_ref(), val.as_ref())],
-                Some(b"Access forbidden.\n"),
-            )
-            .unwrap(); //
-        } else {
-            send_http_response(403, vec![], Some(b"Access forbidden.\n")).unwrap();
-        }
+        send_http_response(403, vec![], Some(b"Access forbidden.\n")).unwrap();
     }
     resume_http_request().unwrap();
 }
