@@ -106,14 +106,7 @@ impl HttpContext for CacheFilter {
                 debug!(self.context_id, "fetching request data failed: {}", e);
                 increment_stat(&self.stats.auth_metadata_errors);
                 // Send back local response for not providing relevant request data
-                if cfg!(feature = "visible_logs") {
-                    let (key, val) =
-                        crate::log::visible_logs::get_logs_header_pair(self.context_id);
-                    self.send_http_response(401, vec![(key.as_ref(), val.as_ref())], None);
-                } else {
-                    self.send_http_response(401, vec![], None);
-                }
-
+                self.send_http_response(401, vec![], None);
                 return Action::Pause;
             }
         };
@@ -488,14 +481,6 @@ impl Context for CacheFilter {
                                 } else {
                                     waiter_action = WaiterAction::HandleCacheHit(0);
                                 }
-                            } else if cfg!(feature = "visible_logs") {
-                                let (key, val) =
-                                    crate::log::visible_logs::get_logs_header_pair(self.context_id);
-                                self.send_http_response(
-                                    403,
-                                    vec![(key.as_ref(), val.as_ref())],
-                                    Some(response.reason().unwrap().as_bytes()),
-                                );
                             } else {
                                 increment_stat(&self.stats.unauthorized);
                                 self.send_http_response(
