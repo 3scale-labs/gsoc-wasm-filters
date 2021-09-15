@@ -1,12 +1,16 @@
 use crate::configuration::FilterConfig;
-use crate::filter::http::CacheFilter;
+use crate::filter::http::{CacheFilter, RequestState};
 use crate::rand::thread_rng::{thread_rng_init_fallible, ThreadRng};
 use crate::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
     types::{ContextType, LogLevel},
 };
-use threescale::{proxy::CacheKey, stats::*, structs::ThreescaleData};
+use threescale::{
+    proxy::CacheKey,
+    stats::*,
+    structs::{RateLimitInfo, ThreescaleData},
+};
 
 #[no_mangle]
 pub fn _start() {
@@ -212,9 +216,12 @@ impl RootContext for CacheFilterRoot {
             context_id: context,
             root_id: self.id,
             config: self.config.clone(),
-            update_cache_from_singleton: false,
-            cache_key: CacheKey::default(),
-            req_data: ThreescaleData::default(),
+            state: RequestState {
+                update_cache_from_singleton: false,
+                cache_key: CacheKey::default(),
+                req_data: ThreescaleData::default(),
+                rate_limit_info: RateLimitInfo::default(),
+            },
             stats: self.stats.clone(),
         }))
     }
