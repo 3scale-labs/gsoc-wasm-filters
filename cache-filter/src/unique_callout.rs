@@ -104,7 +104,7 @@ pub enum SetCalloutLockStatus {
 // Callout lock is acquired by placing a key-value pair inside shared data.
 // Return Ok(true) when lock is acquired and Ok(false) when added to waitlist.
 pub fn set_callout_lock(context: &CacheFilter) -> Result<SetCalloutLockStatus, UniqueCalloutError> {
-    let callout_lock_key = format!("CL_{}", context.cache_key.as_string());
+    let callout_lock_key = format!("CL_{}", context.state.cache_key.as_string());
     let context_id = context.context_id;
     let root_id = context.root_id;
     info!(
