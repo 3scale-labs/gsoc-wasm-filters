@@ -252,3 +252,24 @@ impl Message {
         }
     }
 }
+
+// Info relevant for the RateLimit headers.
+#[derive(Clone)]
+pub struct RateLimitInfo {
+    /// Header RateLimit-Limit's value.
+    pub limit: Option<u64>,
+    /// Header RateLimit-Remaining's value.
+    pub remaining: Option<u64>,
+    /// Header RateLimit-Reset's value.
+    pub reset: Option<u64>,
+}
+
+impl Default for RateLimitInfo {
+    fn default() -> Self {
+        RateLimitInfo {
+            limit: None,
+            remaining: None,
+            reset: None,
+        }
+    }
+}
