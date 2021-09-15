@@ -86,16 +86,26 @@ pub enum RequestDataError {
     UpstreamBuilderFail(#[from] threescalers::Error),
 }
 
+/// State data collected/updated during a request lifetime.
+#[derive(Clone)]
+pub struct RequestState {
+    /// Set to true if all tries fail to update cache from the filter.
+    pub update_cache_from_singleton: bool,
+    /// Request metadata. Saved for availability after callout.
+    pub req_data: ThreescaleData,
+    /// Created using request metadata received. Saved for performance.
+    pub cache_key: CacheKey,
+    /// RateLimit header values. Calculated in limit_check_and_update_app.
+    pub rate_limit_info: RateLimitInfo,
+}
+
 #[derive(Clone)]
 pub struct CacheFilter {
     pub context_id: u32,
     pub root_id: u32,
     pub config: FilterConfig,
-    pub update_cache_from_singleton: bool,
-    pub cache_key: CacheKey,
-    // required for cache miss case
-    pub req_data: ThreescaleData,
     pub stats: ThreescaleStats,
+    pub state: RequestState,
 }
 
 impl HttpContext for CacheFilter {
