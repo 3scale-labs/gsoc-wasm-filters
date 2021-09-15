@@ -219,10 +219,31 @@ impl HttpContext for CacheFilter {
         }
     }
 
-    #[cfg(feature = "visible_logs")]
     fn on_http_response_headers(&mut self, _: usize) -> Action {
-        let (key, val) = crate::log::visible_logs::get_logs_header_pair(self.context_id);
-        self.add_http_response_header(key.as_ref(), val.as_ref());
+        #[cfg(feature = "visible_logs")]
+        {
+            let (key, val) = crate::log::visible_logs::get_logs_header_pair(self.context_id);
+            self.add_http_response_header(key.as_ref(), val.as_ref());
+        }
+        // Adding RateLimit headers.
+        if self.state.rate_limit_info.limit.is_some() {
+            self.add_http_response_header(
+                "RateLimit-Limit",
+                &self.state.rate_limit_info.limit.unwrap().to_string(),
+            );
+        }
+        if self.state.rate_limit_info.remaining.is_some() {
+            self.add_http_response_header(
+                "RateLimit-Remaining",
+                &self.state.rate_limit_info.remaining.unwrap().to_string(),
+            );
+        }
+        if self.state.rate_limit_info.reset.is_some() {
+            self.add_http_response_header(
+                "RateLimit-Reset",
+                &self.state.rate_limit_info.reset.unwrap().to_string(),
+            );
+        }
         Action::Continue
     }
 }
