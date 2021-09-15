@@ -273,3 +273,9 @@ impl Default for RateLimitInfo {
         }
     }
 }
+
+// Signifies whether rate-limit a request or not.
+pub enum RateLimitStatus {
+    Authorized(RateLimitInfo),
+    RateLimited(RateLimitInfo),
+}
