@@ -58,7 +58,7 @@ enum AuthResponseError {
     ListKeysMiss,
     #[error("app id field is missing from list keys extension response")]
     ListAppIdMiss,
-    #[error("app id field is missing from list keys extension response")]
+    #[error("service id field is missing from list keys extension response")]
     ListServiceIdMiss,
     #[error("failed to map user_key to app_id in the cache")]
     AppIdNotMapped(#[from] CacheError),
@@ -143,7 +143,7 @@ impl HttpContext for CacheFilter {
                     increment_stat(&self.stats.cache_misses);
                     match set_callout_lock(self) {
                         Ok(SetCalloutLockStatus::LockAcquired) => {
-                            return do_auth_call(self, self, &request_data);
+                            return do_auth_call(self);
                         }
                         Ok(SetCalloutLockStatus::AddedToWaitlist) => return Action::Pause,
                         Ok(SetCalloutLockStatus::ResponseCameFirst) => {
@@ -185,9 +185,7 @@ impl HttpContext for CacheFilter {
                 info!(self.context_id, "cache miss: {}", e);
                 increment_stat(&self.stats.cache_misses);
                 match set_callout_lock(self) {
-                    Ok(SetCalloutLockStatus::LockAcquired) => {
-                        do_auth_call(self, self, &request_data)
-                    }
+                    Ok(SetCalloutLockStatus::LockAcquired) => do_auth_call(self),
                     Ok(SetCalloutLockStatus::AddedToWaitlist) => Action::Pause,
                     Ok(SetCalloutLockStatus::ResponseCameFirst) => {
                         match get_application_from_cache(&self.state.cache_key) {
