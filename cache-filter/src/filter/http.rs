@@ -268,7 +268,13 @@ impl CacheFilter {
 
         // In case of CAS mismatch, new application needs to be fetched and modified again.
         for num_try in 0..max_tries {
+            match limit_check_and_update_application(
                 &self.state.req_data,
+                app,
+                app_cas,
+                &current_time,
+            ) {
+                Ok(RateLimitStatus::Authorized(rate_limit_info)) => {
                     // App is not rate-limited and updated in cache.
                     info!(self.context_id, "request is allowed to pass the filter");
                     self.state.rate_limit_info = rate_limit_info;
@@ -284,7 +290,7 @@ impl CacheFilter {
                     self.resume_http_request();
                     break;
                 }
-                Err(UpdateMetricsError::RateLimited) => {
+                Ok(RateLimitStatus::RateLimited(rate_limit_info)) => {
                     info!(self.context_id, "request is rate-limited");
                     self.state.rate_limit_info = rate_limit_info;
                     self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
