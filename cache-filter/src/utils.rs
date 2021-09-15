@@ -2,10 +2,9 @@ use crate::filter::http::CacheFilter;
 use crate::info;
 use proxy_wasm::{
     hostcalls::{resume_http_request, send_http_response},
-    traits::HttpContext,
     types::Action,
 };
-use threescale::structs::{AppIdentifier, ThreescaleData};
+use threescale::structs::{AppIdentifier, RateLimitInfo};
 use threescalers::{
     api_call::{ApiCall, Kind},
     application::Application,
@@ -18,7 +17,8 @@ use threescalers::{
 };
 
 // Helper function to handle failure when request headers are recieved
-pub fn in_request_failure(filter: &CacheFilter) -> Action {
+pub fn in_request_failure(filter: &mut CacheFilter) -> Action {
+    filter.state.rate_limit_info = RateLimitInfo::default();
     if filter.config.failure_mode_deny {
         send_http_response(403, vec![], Some(b"Access forbidden.\n")).unwrap();
         return Action::Pause;
@@ -27,18 +27,16 @@ pub fn in_request_failure(filter: &CacheFilter) -> Action {
 }
 
 // Helper function to handle failure during processing
-pub fn request_process_failure(filter: &CacheFilter) {
+pub fn request_process_failure(filter: &mut CacheFilter) {
+    filter.state.rate_limit_info = RateLimitInfo::default();
     if filter.config.failure_mode_deny {
         send_http_response(403, vec![], Some(b"Access forbidden.\n")).unwrap();
     }
     resume_http_request().unwrap();
 }
 
-pub fn do_auth_call<C: HttpContext>(
-    ctx: &C,
-    filter: &CacheFilter,
-    request_data: &ThreescaleData,
-) -> Action {
+pub fn do_auth_call(filter: &mut CacheFilter) -> Action {
+    let request_data = &filter.state.req_data;
     let cred = Credentials::ServiceToken(ServiceToken::from(request_data.service_token.as_ref()));
     let service = Service::new(request_data.service_id.as_ref(), cred);
 
@@ -86,7 +84,7 @@ pub fn do_auth_call<C: HttpContext>(
 
     info!(filter.context_id, "App : {:?}", apicall);
     match request_data.upstream.call(
-        ctx,
+        filter,
         uri.as_ref(),
         request.method.as_str(),
         headers,
