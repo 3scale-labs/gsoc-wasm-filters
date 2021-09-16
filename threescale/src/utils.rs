@@ -30,7 +30,11 @@ pub fn limit_check_and_update_application(
                 let time_diff = current_time
                     .checked_sub(period.start)
                     .ok_or(UpdateMetricsError::DurationOverflow)?;
+
+                // This is atleast 1 because current time is higher than window end.
                 let num_windows = time_diff.as_secs() / period.window.as_secs();
+
+                // No. of secs to push forward window ends so the current time fall within new window.
                 let seconds_to_add = num_windows * period.window.as_secs();
 
                 // set to new period window
