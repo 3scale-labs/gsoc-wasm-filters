@@ -289,7 +289,7 @@ impl SingletonService {
                     cas,
                     req_time,
                 ) {
-                    Ok(()) => Ok(()),
+                    Ok(_) => Ok(()),
                     Err(UpdateMetricsError::CacheUpdateFail(reason)) => {
                         anyhow::bail!(SingletonServiceError::SetCacheFailure(
                             cache_key.as_string(),

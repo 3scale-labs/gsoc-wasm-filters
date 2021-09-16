@@ -58,7 +58,7 @@ enum AuthResponseError {
     ListKeysMiss,
     #[error("app id field is missing from list keys extension response")]
     ListAppIdMiss,
-    #[error("app id field is missing from list keys extension response")]
+    #[error("service id field is missing from list keys extension response")]
     ListServiceIdMiss,
     #[error("failed to map user_key to app_id in the cache")]
     AppIdNotMapped(#[from] CacheError),
@@ -86,20 +86,34 @@ pub enum RequestDataError {
     UpstreamBuilderFail(#[from] threescalers::Error),
 }
 
+/// State data collected/updated during a request lifetime.
+#[derive(Clone)]
+pub struct RequestState {
+    /// Set to true if all tries fail to update cache from the filter.
+    pub update_cache_from_singleton: bool,
+    /// Request metadata. Saved for availability after callout.
+    pub req_data: ThreescaleData,
+    /// Created using request metadata received. Saved for performance.
+    pub cache_key: CacheKey,
+    /// RateLimit header values. Calculated in limit_check_and_update_app.
+    pub rate_limit_info: RateLimitInfo,
+}
+
 #[derive(Clone)]
 pub struct CacheFilter {
     pub context_id: u32,
     pub root_id: u32,
     pub config: FilterConfig,
-    pub update_cache_from_singleton: bool,
-    pub cache_key: CacheKey,
-    // required for cache miss case
-    pub req_data: ThreescaleData,
     pub stats: ThreescaleStats,
+    pub state: RequestState,
 }
 
 impl HttpContext for CacheFilter {
     fn on_http_request_headers(&mut self, _: usize) -> Action {
+        info!(
+            self.context_id,
+            "thread({}): on_http_request_headers", self.root_id
+        );
         let mut request_data = match self.get_request_data() {
             Ok(data) => data,
             Err(e) => {
@@ -111,15 +125,15 @@ impl HttpContext for CacheFilter {
             }
         };
 
-        self.cache_key = CacheKey::from(&request_data.service_id, &request_data.app_id);
-        self.req_data = request_data.clone();
+        self.state.cache_key = CacheKey::from(&request_data.service_id, &request_data.app_id);
+        self.state.req_data = request_data.clone();
 
         if let AppIdentifier::UserKey(ref user_key) = request_data.app_id {
             match get_app_id_from_cache(user_key) {
                 Ok(app_id) => {
                     request_data.app_id = AppIdentifier::from(app_id);
-                    self.req_data.app_id = request_data.app_id.clone();
-                    self.cache_key.set_app_id(&request_data.app_id);
+                    self.state.req_data.app_id = request_data.app_id.clone();
+                    self.state.cache_key.set_app_id(&request_data.app_id);
                 }
                 Err(e) => {
                     debug!(
@@ -129,15 +143,15 @@ impl HttpContext for CacheFilter {
                     increment_stat(&self.stats.cache_misses);
                     match set_callout_lock(self) {
                         Ok(SetCalloutLockStatus::LockAcquired) => {
-                            return do_auth_call(self, self, &request_data);
+                            return do_auth_call(self);
                         }
                         Ok(SetCalloutLockStatus::AddedToWaitlist) => return Action::Pause,
                         Ok(SetCalloutLockStatus::ResponseCameFirst) => {
                             match get_app_id_from_cache(user_key) {
                                 Ok(app_id) => {
                                     request_data.app_id = AppIdentifier::from(app_id);
-                                    self.req_data.app_id = request_data.app_id.clone();
-                                    self.cache_key.set_app_id(&request_data.app_id);
+                                    self.state.req_data.app_id = request_data.app_id.clone();
+                                    self.state.cache_key.set_app_id(&request_data.app_id);
                                 }
                                 Err(e) => {
                                     debug!(self.context_id, "user_key->app_id mapping not found after callout response: {:?}", e);
@@ -149,7 +163,7 @@ impl HttpContext for CacheFilter {
                             warn!(
                                 self.context_id,
                                 "failed to set callout-lock or add to waitlist for request(key: {}): {:?}",
-                                self.cache_key.as_string(),
+                                self.state.cache_key.as_string(),
                                 e
                             );
                             return in_request_failure(self);
@@ -159,7 +173,7 @@ impl HttpContext for CacheFilter {
             }
         }
 
-        match get_application_from_cache(&self.cache_key) {
+        match get_application_from_cache(&self.state.cache_key) {
             Ok((mut app, cas)) => match self.handle_cache_hit(&mut app, cas) {
                 Ok(()) => Action::Continue,
                 Err(e) => {
@@ -171,12 +185,10 @@ impl HttpContext for CacheFilter {
                 info!(self.context_id, "cache miss: {}", e);
                 increment_stat(&self.stats.cache_misses);
                 match set_callout_lock(self) {
-                    Ok(SetCalloutLockStatus::LockAcquired) => {
-                        do_auth_call(self, self, &request_data)
-                    }
+                    Ok(SetCalloutLockStatus::LockAcquired) => do_auth_call(self),
                     Ok(SetCalloutLockStatus::AddedToWaitlist) => Action::Pause,
                     Ok(SetCalloutLockStatus::ResponseCameFirst) => {
-                        match get_application_from_cache(&self.cache_key) {
+                        match get_application_from_cache(&self.state.cache_key) {
                             Ok((mut app, cas)) => match self.handle_cache_hit(&mut app, cas) {
                                 Ok(()) => Action::Continue,
                                 Err(e) => {
@@ -197,7 +209,7 @@ impl HttpContext for CacheFilter {
                         warn!(
                             self.context_id,
                             "failed to set callout-lock for request(key: {}): {:?}",
-                            self.cache_key.as_string(),
+                            self.state.cache_key.as_string(),
                             e
                         );
                         in_request_failure(self)
@@ -207,18 +219,42 @@ impl HttpContext for CacheFilter {
         }
     }
 
-    #[cfg(feature = "visible_logs")]
     fn on_http_response_headers(&mut self, _: usize) -> Action {
-        let (key, val) = crate::log::visible_logs::get_logs_header_pair(self.context_id);
-        self.add_http_response_header(key.as_ref(), val.as_ref());
+        #[cfg(feature = "visible_logs")]
+        {
+            let (key, val) = crate::log::visible_logs::get_logs_header_pair(self.context_id);
+            self.add_http_response_header(key.as_ref(), val.as_ref());
+        }
+        // Adding RateLimit headers.
+        if self.state.rate_limit_info.limit.is_some() {
+            self.add_http_response_header(
+                "RateLimit-Limit",
+                &self.state.rate_limit_info.limit.unwrap().to_string(),
+            );
+        }
+        if self.state.rate_limit_info.remaining.is_some() {
+            self.add_http_response_header(
+                "RateLimit-Remaining",
+                &self.state.rate_limit_info.remaining.unwrap().to_string(),
+            );
+        }
+        if self.state.rate_limit_info.reset.is_some() {
+            self.add_http_response_header(
+                "RateLimit-Reset",
+                &self.state.rate_limit_info.reset.unwrap().to_string(),
+            );
+        }
         Action::Continue
     }
 }
 
 impl CacheFilter {
     fn report_to_singleton(&self, qid: u32, req_time: &Duration) -> bool {
-        let message: Message =
-            Message::new(self.update_cache_from_singleton, &self.req_data, req_time);
+        let message: Message = Message::new(
+            self.state.update_cache_from_singleton,
+            &self.state.req_data,
+            req_time,
+        );
         if let Err(e) = self.enqueue_shared_queue(qid, Some(&bincode::serialize(&message).unwrap()))
         {
             warn!(
@@ -247,14 +283,20 @@ impl CacheFilter {
         let mut rate_limited = false;
         let max_tries = self.config.max_tries;
 
-        add_hierarchy_to_metrics(&app.metric_hierarchy, &mut self.req_data.metrics);
+        add_hierarchy_to_metrics(&app.metric_hierarchy, &mut self.state.req_data.metrics);
 
         // In case of CAS mismatch, new application needs to be fetched and modified again.
         for num_try in 0..max_tries {
-            match limit_check_and_update_application(&self.req_data, app, app_cas, &current_time) {
-                Ok(()) => {
+            match limit_check_and_update_application(
+                &self.state.req_data,
+                app,
+                app_cas,
+                &current_time,
+            ) {
+                Ok(RateLimitStatus::Authorized(rate_limit_info)) => {
                     // App is not rate-limited and updated in cache.
                     info!(self.context_id, "request is allowed to pass the filter");
+                    self.state.rate_limit_info = rate_limit_info;
                     if app_cas == 0 {
                         increment_stat(&self.stats.cached_apps)
                     }
@@ -267,8 +309,9 @@ impl CacheFilter {
                     self.resume_http_request();
                     break;
                 }
-                Err(UpdateMetricsError::RateLimited) => {
+                Ok(RateLimitStatus::RateLimited(rate_limit_info)) => {
                     info!(self.context_id, "request is rate-limited");
+                    self.state.rate_limit_info = rate_limit_info;
                     self.send_http_response(429, vec![], Some(b"Request rate-limited.\n"));
                     // no need to retry if already rate-limted
                     rate_limited = true;
@@ -283,7 +326,7 @@ impl CacheFilter {
                         reason
                     );
                     if num_try < max_tries {
-                        match get_application_from_cache(&self.cache_key) {
+                        match get_application_from_cache(&self.state.cache_key) {
                             Ok((new_app, cas)) => {
                                 *app = new_app;
                                 app_cas = cas;
@@ -300,7 +343,7 @@ impl CacheFilter {
         // Singleton will try to overwrite and in the mean time till singleton receives
         // the message, hopefully, contention will reduce.
         if !updated_cache && !rate_limited {
-            self.update_cache_from_singleton = true;
+            self.state.update_cache_from_singleton = true;
             self.resume_http_request();
         }
         Ok(())
@@ -328,12 +371,12 @@ impl CacheFilter {
         );
 
         // change user_key to app_id for further processing
-        if let AppIdentifier::UserKey(user_key) = self.cache_key.app_id() {
-            self.req_data.app_id = app_identifier.clone();
+        if let AppIdentifier::UserKey(user_key) = self.state.cache_key.app_id() {
+            self.state.req_data.app_id = app_identifier.clone();
             set_app_id_to_cache(user_key, &app_id)?;
         }
 
-        self.cache_key = CacheKey::from(&service_id, &app_identifier);
+        self.state.cache_key = CacheKey::from(&service_id, &app_identifier);
 
         if let Some(reports) = response.usage_reports() {
             for usage in reports {
@@ -454,7 +497,7 @@ impl Context for CacheFilter {
 
         // Freeing of callout-lock requires the cache_key used to set the lock but cache_key
         // attached to 'self' can change inside handle_auth_response (user_key to app_id).
-        let prev_cache_key = self.cache_key.clone();
+        let prev_cache_key = self.state.cache_key.clone();
 
         // Depending on how response is handled here, waiters should resume accordingly.
         // Note: Inner value of this enum is changed to context_id to resume in send_action_to_waiters().

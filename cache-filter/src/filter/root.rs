@@ -1,12 +1,16 @@
 use crate::configuration::FilterConfig;
-use crate::filter::http::CacheFilter;
+use crate::filter::http::{CacheFilter, RequestState};
 use crate::rand::thread_rng::{thread_rng_init_fallible, ThreadRng};
 use crate::{debug, info, warn};
 use proxy_wasm::{
     traits::{Context, HttpContext, RootContext},
     types::{ContextType, LogLevel},
 };
-use threescale::{proxy::CacheKey, stats::*, structs::ThreescaleData};
+use threescale::{
+    proxy::CacheKey,
+    stats::*,
+    structs::{RateLimitInfo, ThreescaleData},
+};
 
 #[no_mangle]
 pub fn _start() {
@@ -159,10 +163,10 @@ impl RootContext for CacheFilterRoot {
 
                     // Waiting contexts can have cache_key with user_key pattern but cache stores
                     // application only with app_id pattern so change if required before accessing it.
-                    if let AppIdentifier::UserKey(ref user_key) = context.cache_key.app_id() {
+                    if let AppIdentifier::UserKey(ref user_key) = context.state.cache_key.app_id() {
                         match get_app_id_from_cache(user_key) {
                             Ok(app_id) => {
-                                context.cache_key.set_app_id(&AppIdentifier::from(app_id))
+                                context.state.cache_key.set_app_id(&AppIdentifier::from(app_id))
                             }
                             Err(e) => {
                                 // This is unlikely since mapping is defined when auth response is handled properly.
@@ -177,7 +181,7 @@ impl RootContext for CacheFilterRoot {
                         }
                     }
 
-                    match get_application_from_cache(&context.cache_key) {
+                    match get_application_from_cache(&context.state.cache_key) {
                         Ok((mut app, cas)) => {
                             if let Err(e) = context.handle_cache_hit(&mut app, cas) {
                                 debug!(context_to_resume, "handle_cache_hit fail: {}", e);
@@ -212,9 +216,12 @@ impl RootContext for CacheFilterRoot {
             context_id: context,
             root_id: self.id,
             config: self.config.clone(),
-            update_cache_from_singleton: false,
-            cache_key: CacheKey::default(),
-            req_data: ThreescaleData::default(),
+            state: RequestState {
+                update_cache_from_singleton: false,
+                cache_key: CacheKey::default(),
+                req_data: ThreescaleData::default(),
+                rate_limit_info: RateLimitInfo::default(),
+            },
             stats: self.stats.clone(),
         }))
     }
